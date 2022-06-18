@@ -6,13 +6,13 @@ Implementing some of [this very draft spec](https://github.com/robinsloan/spring
 
 You can download precompiled binaries for your system / architecture from the releases tab.
 
-Run `./s93client --help` (or `.\s93client.exe --help` on Windows) to get started posting to a spring93 server.
+Run `./s83client --help` (or `.\s83client.exe --help` on Windows) to get started posting to a spring83 server.
 
 ## Hacking
 
 ## run the server
 
-If you have [modd]() installed, run `modd`. Alternatively, `PORT=8000 go run cmd/s93server/main.go`.
+If you have [modd]() installed, run `modd`. Alternatively, `PORT=8000 go run cmd/s83server/main.go`.
 `PORT` is optional and defaults to 8000.
 
 ## run the client
@@ -21,9 +21,9 @@ On first run, the client will generate a keypair for you according to the spring
 
 This key has to meet a certain specification, so it may take some time to generate on the first run.
 
-`echo "<em>very</em> <pre>cool</pre>" | go run cmd/s93client/main.go http://localhost:8000`
+`echo "<em>very</em> <pre>cool</pre>" | go run cmd/s83client/main.go http://localhost:8000`
 
-Run `go run cmd/s93client/main.go --help` for all options.
+Run `go run cmd/s83client/main.go --help` for all options.
 
 ## view the content
 
