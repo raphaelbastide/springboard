@@ -22,6 +22,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -31,6 +32,43 @@ import (
 )
 
 const MAX_SIG = (1 << 256) - 1
+
+const PAGE_TEMPLATE = `
+<!DOCTYPE html>
+<html>
+<head>
+<title>Spring83</title>
+<base target="_blank"/>
+<style>
+	body {
+		background-color: lightyellow;
+	}
+	.board {
+		background-color: lightcyan;
+		border: 1px dotted black;
+		margin: 5px;
+		padding: 10px;
+		display: inline-flex;
+	}
+	iframe {
+		border: 0;
+		height: 300px;
+		width: 300px;
+	}
+</style>
+</head>
+<body>
+<h1>Spring 83</h1>
+<div id="containers">
+	{{ range .Boards }}
+		<div id="b{{ .Key }}" class="board">
+			<iframe sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="{{ .Board | html }}"></iframe>
+		</div>
+	{{ end }}
+</div>
+</body>
+</html>
+`
 
 func must(err error) {
 	if err != nil {
@@ -82,25 +120,8 @@ func main() {
 	log.Fatal(http.ListenAndServe(listenAddress, nil))
 }
 
-func readTemplate(name string) (string, error) {
-	file, err := os.Open(name)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	h, err := ioutil.ReadAll(file)
-	if err != nil {
-		return "", err
-	}
-	return string(h), nil
-}
-
 func mustTemplate(name string) *template.Template {
-	f, err := readTemplate(name)
-	if err != nil {
-		panic(err)
-	}
+	f := PAGE_TEMPLATE
 
 	t, err := template.New("index").Parse(f)
 	if err != nil {
@@ -357,6 +378,9 @@ func (s *Spring83Server) loadBoards() ([]Board, error) {
 		if err != nil {
 			return nil, err
 		}
+		// HACK: find a better way to make links open in new windows
+		aTagStart := regexp.MustCompile("< *a ")
+		board = aTagStart.ReplaceAllString(board, "<a target='_blank'")
 
 		expTime, err := time.Parse(time.RFC3339, expiry)
 		if err != nil {
@@ -409,18 +433,11 @@ func (s *Spring83Server) showAllBoards(w http.ResponseWriter, r *http.Request) {
 	nonce := randstr()
 	w.Header().Add("Content-Security-Policy", fmt.Sprintf("script-src 'nonce-%s'; img-src 'self'", nonce))
 
-	boardBytes, err := json.Marshal(boards)
-	if err != nil {
-		log.Printf(err.Error())
-		http.Error(w, "Unable to marshal boards", http.StatusInternalServerError)
-		return
-	}
-
 	data := struct {
-		Boards string
+		Boards []Board
 		Nonce  string
 	}{
-		Boards: string(boardBytes),
+		Boards: boards,
 		Nonce:  nonce,
 	}
 
