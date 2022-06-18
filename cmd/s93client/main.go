@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -65,15 +66,21 @@ func fileExists(name string) bool {
 	return true
 }
 
-func getKeys() (ed25519.PublicKey, ed25519.PrivateKey) {
-	user, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
+func getKeys(keyFolder string) (ed25519.PublicKey, ed25519.PrivateKey) {
+	configPath := ""
+	var err error
+	if keyFolder == "" {
+		user, err := user.Current()
+		if err != nil {
+			panic(err)
+		}
 
-	configPath := os.Getenv("XDG_CONFIG_HOME")
-	if configPath == "" {
-		configPath = filepath.Join(user.HomeDir, ".config", "spring83")
+		configPath = os.Getenv("XDG_CONFIG_HOME")
+		if configPath == "" {
+			configPath = filepath.Join(user.HomeDir, ".config", "spring83")
+		}
+	} else {
+		configPath = keyFolder
 	}
 
 	if err = os.MkdirAll(configPath, os.ModePerm); err != nil {
@@ -105,7 +112,18 @@ func getKeys() (ed25519.PublicKey, ed25519.PrivateKey) {
 }
 
 func main() {
-	pubkey, privkey := getKeys()
+	if len(os.Args) == 1 || len(os.Args) > 3 || os.Args[1] == "-h" || os.Args[1] == "--help" {
+		printHelp()
+		os.Exit(0)
+	}
+
+	serverUrl := strings.TrimSuffix(os.Args[1], "/")
+	keyFolder := ""
+	if len(os.Args) == 3 {
+		keyFolder = os.Args[2]
+	}
+
+	pubkey, privkey := getKeys(keyFolder)
 
 	client := &http.Client{}
 
@@ -122,7 +140,7 @@ func main() {
 	}
 
 	// TODO: take the URL as a command line param
-	url := fmt.Sprintf("http://localhost:8000/%x", pubkey)
+	url := fmt.Sprintf("%s/%x", serverUrl, pubkey)
 	fmt.Printf("URL: %s\n", url)
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(body))
 	if err != nil {
@@ -148,4 +166,23 @@ func main() {
 	}
 
 	fmt.Printf("%s: %s\n", resp.Status, responseBody)
+}
+
+func printHelp() {
+	fmt.Printf(`Usage:
+
+%s SERVER_URL [KEY_PAIR_FOLDER_PATH]
+
+Updates a board with the text from standard input. 
+You can either pipe the input or enter it and press ctrl-d.
+
+SERVER_URL:           the full URL for the spring83 server
+
+KEY_PAIR_FOLDER_PATH: (optional) path of folder with valid public/private key path
+                      if not provided, uses a standard path e.g. ~/.config/spring83
+                      this folder will be create if it doesn't exist
+                      creates/finds a new valid key pair if none exist at path
+
+-h or --help:         displays this help	
+`, os.Args[0])
 }

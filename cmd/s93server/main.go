@@ -22,6 +22,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -68,12 +69,17 @@ func initDB() *sql.DB {
 
 func main() {
 	db := initDB()
-	log.Print("starting helloserver")
 
 	server := newSpring83Server(db)
 	http.HandleFunc("/", server.RootHandler)
 
-	log.Fatal(http.ListenAndServe(":8000", nil))
+	port, err := strconv.ParseUint(os.Getenv("PORT"), 10, 16)
+	if err != nil {
+		port = 8000
+	}
+	listenAddress := fmt.Sprintf(":%d", port)
+	log.Printf("Listening on port %d", port)
+	log.Fatal(http.ListenAndServe(listenAddress, nil))
 }
 
 func readTemplate(name string) (string, error) {
