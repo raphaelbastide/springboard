@@ -93,20 +93,27 @@ func getKeys(keyFolder string) (ed25519.PublicKey, ed25519.PrivateKey) {
 	var pubkey ed25519.PublicKey
 	var privkey ed25519.PrivateKey
 	if fileExists(pubfile) && fileExists(privfile) {
-		pubkey, err = ioutil.ReadFile(pubfile)
+		encodedPubKey, err := ioutil.ReadFile(pubfile)
 		if err != nil {
 			panic(err)
 		}
-		privkey, err = ioutil.ReadFile(privfile)
+		pubkey, err = hex.DecodeString(string(encodedPubKey[:]))
+		if err != nil {
+			panic(err)
+		}
+		encodedPrivKey, err := ioutil.ReadFile(privfile)
+		if err != nil {
+			panic(err)
+		}
+		privkey, err = hex.DecodeString(string(encodedPrivKey[:]))
 		if err != nil {
 			panic(err)
 		}
 	} else {
 		fmt.Printf("I am fishing in the sea of all possible keys for a valid spring83 key. This may take a bit...\n")
 		pubkey, privkey = validKey()
-
-		os.WriteFile(pubfile, pubkey, 0666)
-		os.WriteFile(privfile, privkey, 0600)
+		os.WriteFile(pubfile, []byte(hex.EncodeToString(pubkey)), 0644)
+		os.WriteFile(privfile, []byte(hex.EncodeToString(privkey)), 0600)
 	}
 
 	return pubkey, privkey
@@ -130,13 +137,13 @@ func main() {
 
 	gmt, _ := time.LoadLocation("GMT")
 	buffer, _ := time.ParseDuration("10m") // in case our computer is "fast" and the other computer is picky
-	dt := time.Now().Add(-buffer).In(gmt).Format(time.RFC1123)
 	body, err := ioutil.ReadAll(os.Stdin)
-	body = append([]byte(fmt.Sprintf(`<meta http-equiv="last-modified" content="%s">`, dt)), body...)
+	dt := time.Now().Add(-buffer).In(gmt)
+	dtISO8601 := dt.Format("2006-01-02T15:04:05Z")
+	body = append([]byte(fmt.Sprintf(`<time  datetime="%s">`, dtISO8601)), body...)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(string(body))
 
 	if len(body) == 0 {
 		panic(fmt.Errorf("input required"))
@@ -153,10 +160,11 @@ func main() {
 	}
 
 	sig := ed25519.Sign(privkey, body)
-	fmt.Printf("Spring-83 Signature=%x\n", sig)
-	req.Header.Set("Authorization", fmt.Sprintf("Spring-83 Signature=%x", sig))
+	fmt.Printf("Spring-Signature: %x\n", sig)
+	req.Header.Set("Spring-Signature", fmt.Sprintf("%x", sig))
 
-	req.Header.Set("If-Unmodified-Since", dt)
+	dtHTTP := dt.Format(time.RFC1123)
+	req.Header.Set("If-Unmodified-Since", dtHTTP)
 	req.Header.Set("Spring-Version", "83")
 	req.Header.Set("Content-Type", "text/html;charset=utf-8")
 

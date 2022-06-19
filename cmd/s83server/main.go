@@ -24,7 +24,6 @@ import (
 	"os"
 	"regexp"
 	"strconv"
-	"strings"
 	"text/template"
 	"time"
 
@@ -95,7 +94,7 @@ func initDB() *sql.DB {
 
 		_, err = db.Exec(initSQL)
 		if err != nil {
-			log.Fatal("%q: %s\n", err, initSQL)
+			log.Fatalf("%q: %s\n", err, initSQL)
 		}
 		return db
 	}
@@ -215,7 +214,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//TODO: this time should also be checked againt the <meta http-equiv="last-modified" content="%s"> tag
+	//TODO: this time should also be checked againt the <time datetime="..."> tag
 	//      in fact per the spec, the header is just for convenience/fast failing
 	var mtime time.Time
 	if ifUnmodifiedHeader, ok := r.Header["If-Unmodified-Since"]; !ok {
@@ -278,29 +277,22 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var signature []byte
-	if authorizationHeaders, ok := r.Header["Authorization"]; !ok {
-		http.Error(w, "Missing Authorization header", http.StatusBadRequest)
+	if signatureHeaders, ok := r.Header["Spring-Signature"]; !ok {
+		http.Error(w, "missing Spring-Signature header", http.StatusBadRequest)
 		return
 	} else {
-		parts := strings.Split(authorizationHeaders[0], " ")
-		if parts[0] != "Spring-83" || len(parts) < 2 {
-			http.Error(w, "Invalid Authorization Type", http.StatusBadRequest)
-			return
-		}
-
-		sig := strings.Split(parts[1], "=")
+		sig := signatureHeaders[0]
 		if len(sig) < 1 {
 			http.Error(w, "Invalid Signature", http.StatusBadRequest)
 			return
 		}
 
-		sigString := sig[1]
-		if len(sigString) != 128 {
-			http.Error(w, fmt.Sprintf("Expecting 64-bit signature %s %d", sigString, len(sigString)), http.StatusBadRequest)
+		if len(sig) != 128 {
+			http.Error(w, fmt.Sprintf("Expecting 64-bit signature %s %d", sig, len(sig)), http.StatusBadRequest)
 			return
 		}
 
-		signature, err = hex.DecodeString(sigString)
+		signature, err = hex.DecodeString(sig)
 		if err != nil {
 			http.Error(w, "Unable to decode signature", http.StatusBadRequest)
 			return

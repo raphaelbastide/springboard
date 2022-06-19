@@ -1,5 +1,5 @@
-module github.com/llimllib/springer
+module github.com/motevets/s83
 
 go 1.18
 
-require github.com/mattn/go-sqlite3 v1.14.13 // indirect
+require github.com/mattn/go-sqlite3 v1.14.13
