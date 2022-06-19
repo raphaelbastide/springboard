@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,8 +20,10 @@ import (
 
 func validKey() (foundPublicKey ed25519.PublicKey, foundPrivateKey ed25519.PrivateKey) {
 
-	expiryYear := time.Now().Year() + 1
-	keyEnd := fmt.Sprintf("ed%d", expiryYear)
+	expiryYear := strconv.Itoa(time.Now().Year() + 1)
+	expiryYearSuffix := expiryYear[len(expiryYear)-2:]
+	expiryMonth := time.Now().Month()
+	keyEnd := fmt.Sprintf("83e%02d%s", expiryMonth, expiryYearSuffix)
 	nRoutines := runtime.NumCPU() - 1
 	var waitGroup sync.WaitGroup
 	var once sync.Once
@@ -37,12 +40,10 @@ func validKey() (foundPublicKey ed25519.PublicKey, foundPrivateKey ed25519.Priva
 					panic(err)
 				}
 
-				target, err := hex.DecodeString(keyEnd)
-				if err != nil {
-					panic(err)
-				}
+				pubStr := hex.EncodeToString(pub)
+				pubSuffix := pubStr[len(pubStr)-len(keyEnd):]
 
-				if bytes.Compare(pub[29:32], target) == 0 {
+				if pubSuffix == keyEnd {
 					once.Do(func() {
 						fmt.Printf("%s\n", fmt.Sprintf("%x", pub))
 						foundPublicKey = pub
@@ -127,10 +128,15 @@ func main() {
 
 	client := &http.Client{}
 
+	gmt, _ := time.LoadLocation("GMT")
+	buffer, _ := time.ParseDuration("10m") // in case our computer is "fast" and the other computer is picky
+	dt := time.Now().Add(-buffer).In(gmt).Format(time.RFC1123)
 	body, err := ioutil.ReadAll(os.Stdin)
+	body = append([]byte(fmt.Sprintf(`<meta http-equiv="last-modified" content="%s">`, dt)), body...)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(string(body))
 
 	if len(body) == 0 {
 		panic(fmt.Errorf("input required"))
@@ -139,7 +145,6 @@ func main() {
 		panic(fmt.Errorf("input body too long"))
 	}
 
-	// TODO: take the URL as a command line param
 	url := fmt.Sprintf("%s/%x", serverUrl, pubkey)
 	fmt.Printf("URL: %s\n", url)
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(body))
@@ -151,8 +156,9 @@ func main() {
 	fmt.Printf("Spring-83 Signature=%x\n", sig)
 	req.Header.Set("Authorization", fmt.Sprintf("Spring-83 Signature=%x", sig))
 
-	dt := time.Now().Format(time.RFC1123)
 	req.Header.Set("If-Unmodified-Since", dt)
+	req.Header.Set("Spring-Version", "83")
+	req.Header.Set("Content-Type", "text/html;charset=utf-8")
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -215,6 +215,8 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//TODO: this time should also be checked againt the <meta http-equiv="last-modified" content="%s"> tag
+	//      in fact per the spec, the header is just for convenience/fast failing
 	var mtime time.Time
 	if ifUnmodifiedHeader, ok := r.Header["If-Unmodified-Since"]; !ok {
 		http.Error(w, "Missing If-Unmodified-Since header", http.StatusBadRequest)
@@ -315,19 +317,24 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If the current four-digit year is YYYY, and the
-	// previous four-digit year is YYYX, the server must
-	// only accept PUTs for keys that end with the four
-	// digits YYYY or YYYX, preceded in turn by the two hex
-	// digits "ed". This is the years-of-use requirement.
-	//
-	// The server must reject other keys with 400 Bad
-	// Request.
+	// Keys are of the form 83eMMYY
+	// when PUTting, a key must
+	// - be greater than today (more specifically the today must be before the first day of the next month following the expir, similar to credit cards)
+	// - be less than two years from now
+	// The server must reject other keys with 400 Bad Request.
 	last4 := string(keyStr[60:64])
-	if keyStr[58:60] != "ed" ||
-		(last4 != time.Now().Format("2006") &&
-			last4 != time.Now().AddDate(1, 0, 0).Format("2006")) {
-		http.Error(w, "Signature must end with edYYYY", http.StatusBadRequest)
+	today := time.Now()
+	expiry, err := time.Parse("0206", last4)
+	if keyStr[57:60] != "83e" || err != nil {
+		http.Error(w, "Signature must end with 83eMMYY. You might be using an old key format. Delete your old key, update your client, and try again.", http.StatusBadRequest)
+		return
+	}
+	if today.After(expiry.AddDate(0, 1, 0)) {
+		http.Error(w, "Key has expired", http.StatusBadRequest)
+		return
+	}
+	if expiry.After(today.AddDate(2, 0, 0)) {
+		http.Error(w, "Key is set to expire more than two years in the future", http.StatusBadRequest)
 		return
 	}
 
@@ -339,14 +346,15 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiry := time.Now().AddDate(0, 0, 7).Format(time.RFC3339)
+	// TODO: make the "freshness" date modifiable
+	boardExpiry := time.Now().AddDate(0, 0, 7).Format(time.RFC3339)
 	_, err = s.db.Exec(`
 		INSERT INTO boards (key, board, expiry)
 		            values(?, ?, ?)
 	    ON CONFLICT(key) DO UPDATE SET
 			board=?,
 			expiry=?
-	`, keyStr, body, expiry, body, expiry)
+	`, keyStr, body, boardExpiry, body, boardExpiry)
 
 	if err != nil {
 		log.Printf("%s", err)
