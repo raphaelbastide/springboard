@@ -53,6 +53,13 @@ Run `go run cmd/s83client/main.go --help` for all options.
 
 go to http://localhost:8000 while the server is running
 
+## Other known Spring '83 implementations
+| Name                       | Lang                |
+| -------------------------- | ------------------- |
+| [llimllib/springer]        | golang              |
+| [michael-lazer/lets-dance] | python              |
+| [rpj/spring83]             | Javascript (NodeJS) |
+
 ## Credits
 
 - this package was forked from [llimllib/springer](https://github.com/llimllib/springer/)
@@ -62,3 +69,7 @@ go to http://localhost:8000 while the server is running
 
 Unless a diffrent licence is established by [llimllib/springer](https://github.com/llimllib/springer/), this code is licensed under
 [GNU GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html).
+
+[llimllib/springer]: https://github.com/llimllib/springer
+[michael-lazer/lets-dance]: https://github.com/michael-lazer/lets-dance
+[rpj/spring83]: https://github.com/rpj/spring83
