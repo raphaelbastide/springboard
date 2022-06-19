@@ -8,11 +8,7 @@ You can see it in action at [spring83.kindrobot.ca](https://spring83.kindrobot.c
 
 You can download precompiled binaries for your system / architecture from the releases tab.
 
-<<<<<<< HEAD
 Run `./s83client --help` (or `.\s83client.exe --help` on Windows) to get started posting to a spring83 server.
-=======
-If you have [modd](https://github.com/cortesi/modd) installed, run `modd`. Alternatively, `go run server/main.go`
->>>>>>> llimllib/main
 
 An example:
 
