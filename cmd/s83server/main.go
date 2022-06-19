@@ -14,7 +14,6 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -22,7 +21,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"regexp"
 	"strconv"
 	"text/template"
 	"time"
@@ -42,17 +40,34 @@ const PAGE_TEMPLATE = `
 	body {
 		background-color: lightyellow;
 	}
+	#containers {
+	  display: flex;
+	  flex-wrap: wrap;
+	}
 	.board {
 		background-color: lightcyan;
 		border: 1px dotted black;
 		margin: 5px;
 		padding: 10px;
-		display: inline-flex;
+		width: min-content;
+		cursor: pointer;
+	}
+	.description {
+	  font-family: monospace;
+	  font-size: xx-small;
+	  display: flex;
+	  flex-wrap: wrap;
+	  justify-content: space-between;
+	}
+	.description {
+	  color: darkgray;
 	}
 	iframe {
 		border: 0;
-		height: 300px;
-		width: 300px;
+		height: 320px;
+		width: 100% ;
+                overflow: hidden;
+		pointer-events: none;
 	}
 </style>
 </head>
@@ -60,8 +75,13 @@ const PAGE_TEMPLATE = `
 <h1>Spring 83</h1>
 <div id="containers">
 	{{ range .Boards }}
-		<div id="b{{ .Key }}" class="board">
-			<iframe sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="{{ .Board | html }}"></iframe>
+		<div id="b{{ .Key }}" class="board" onclick="window.open('/{{.Key}}', '_blank', 'height=800,width=564');">
+			<iframe sandbox="allow-popups" src="/{{.Key}}"></iframe>
+			<div class="description">
+			  <span class="modified">{{.Modified}}</span>
+			  <span class="full-page-link">Full Page</span>
+			  <span class="key">{{.Key}}</span>
+			</div>
 		</div>
 	{{ end }}
 </div>
@@ -88,7 +108,7 @@ func initDB() *sql.DB {
 		CREATE TABLE boards (
 			key text NOT NULL PRIMARY KEY,
 			board text,
-			expiry text
+			modified text
 		);
 		`
 
@@ -144,14 +164,14 @@ func newSpring83Server(db *sql.DB) *Spring83Server {
 
 func (s *Spring83Server) getBoard(key string) (*Board, error) {
 	query := `
-		SELECT key, board, expiry
+		SELECT key, board, modified
 		FROM boards
 		WHERE key=?
 	`
 	row := s.db.QueryRow(query, key)
 
-	var dbkey, board, expiry string
-	err := row.Scan(&dbkey, &board, &expiry)
+	var dbkey, board, modified string
+	err := row.Scan(&dbkey, &board, &modified)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			return nil, err
@@ -159,7 +179,7 @@ func (s *Spring83Server) getBoard(key string) (*Board, error) {
 		return nil, nil
 	}
 
-	expTime, err := time.Parse(time.RFC3339, expiry)
+	modifiedTime, err := time.Parse(time.RFC3339, modified)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +187,7 @@ func (s *Spring83Server) getBoard(key string) (*Board, error) {
 	return &Board{
 		Key:    key,
 		Board:  board,
-		Expiry: expTime,
+		Modified: modifiedTime,
 	}, nil
 }
 
@@ -243,7 +263,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if curBoard != nil && !mtime.Before(curBoard.Expiry) {
+	if curBoard != nil && mtime.Before(curBoard.Modified) {
 		http.Error(w, "Old content", http.StatusConflict)
 		return
 	}
@@ -311,7 +331,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 
 	// Keys are of the form 83eMMYY
 	// when PUTting, a key must
-	// - be greater than today (more specifically the today must be before the first day of the next month following the expir, similar to credit cards)
+	// - be greater than today (more specifically the today must be before the first day of the next month following the expire, similar to credit cards)
 	// - be less than two years from now
 	// The server must reject other keys with 400 Bad Request.
 	last4 := string(keyStr[60:64])
@@ -339,14 +359,14 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TODO: make the "freshness" date modifiable
-	boardExpiry := time.Now().AddDate(0, 0, 7).Format(time.RFC3339)
+	modifiedTimeStr := mtime.Format(time.RFC3339)
 	_, err = s.db.Exec(`
-		INSERT INTO boards (key, board, expiry)
+		INSERT INTO boards (key, board, modified)
 		            values(?, ?, ?)
 	    ON CONFLICT(key) DO UPDATE SET
 			board=?,
-			expiry=?
-	`, keyStr, body, boardExpiry, body, boardExpiry)
+			modified=?
+	`, keyStr, body, modifiedTimeStr, body, modifiedTimeStr)
 
 	if err != nil {
 		log.Printf("%s", err)
@@ -357,12 +377,12 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 type Board struct {
 	Key    string
 	Board  string
-	Expiry time.Time
+	Modified time.Time
 }
 
 func (s *Spring83Server) loadBoards() ([]Board, error) {
 	query := `
-		SELECT key, board, expiry
+		SELECT key, board, modified
 		FROM boards
 	`
 	rows, err := s.db.Query(query)
@@ -372,17 +392,14 @@ func (s *Spring83Server) loadBoards() ([]Board, error) {
 
 	boards := []Board{}
 	for rows.Next() {
-		var key, board, expiry string
+		var key, board, modified string
 
-		err = rows.Scan(&key, &board, &expiry)
+		err = rows.Scan(&key, &board, &modified)
 		if err != nil {
 			return nil, err
 		}
-		// HACK: find a better way to make links open in new windows
-		aTagStart := regexp.MustCompile("< *a ")
-		board = aTagStart.ReplaceAllString(board, "<a target='_blank'")
 
-		expTime, err := time.Parse(time.RFC3339, expiry)
+		modifiedTime, err := time.Parse(time.RFC3339, modified)
 		if err != nil {
 			return nil, err
 		}
@@ -390,7 +407,7 @@ func (s *Spring83Server) loadBoards() ([]Board, error) {
 		boards = append(boards, Board{
 			Key:    key,
 			Board:  board,
-			Expiry: expTime,
+			Modified: modifiedTime,
 		})
 	}
 
@@ -426,19 +443,10 @@ func (s *Spring83Server) showAllBoards(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Spring-Difficulty", fmt.Sprintf("%f", difficultyFactor))
 
-	// XXX: we want to block all javascript from executing, except for our own
-	// script, with a CSP but I'm not sure exactly how to do that. This does
-	// seem to block a simple onclick handler I added to the code, which is
-	// nice
-	nonce := randstr()
-	w.Header().Add("Content-Security-Policy", fmt.Sprintf("script-src 'nonce-%s'; img-src 'self'", nonce))
-
 	data := struct {
 		Boards []Board
-		Nonce  string
 	}{
 		Boards: boards,
-		Nonce:  nonce,
 	}
 
 	s.homeTemplate.Execute(w, data)
@@ -467,32 +475,11 @@ func (s *Spring83Server) showBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add("Spring-Difficulty", fmt.Sprintf("%f", difficultyFactor))
+	w.Header().Add("Content-Type", "text/html;charset=utf-8")
 
-	// XXX: we want to block all javascript from executing, except for our own
-	// script, with a CSP but I'm not sure exactly how to do that. This does
-	// seem to block a simple onclick handler I added to the code, which is
-	// nice
-	nonce := randstr()
-	w.Header().Add("Content-Security-Policy", fmt.Sprintf("script-src 'nonce-%s'; img-src 'self'", nonce))
+	w.Header().Add("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; form-action *; connect-src *;")
 
-	boardBytes, err := json.Marshal([]*Board{board})
-	if err != nil {
-		log.Printf(err.Error())
-		http.Error(w, "Unable to marshal boards", http.StatusInternalServerError)
-		return
-	}
-
-	data := struct {
-		Boards string
-		Nonce  string
-	}{
-		Boards: string(boardBytes),
-		Nonce:  nonce,
-	}
-
-	// for now just be lazy and don't give this page its own template, re-use
-	// the page designed to show all boards
-	s.homeTemplate.Execute(w, data)
+	w.Write([]byte(board.Board))
 }
 
 func (s *Spring83Server) RootHandler(w http.ResponseWriter, r *http.Request) {

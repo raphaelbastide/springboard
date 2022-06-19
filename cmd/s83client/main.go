@@ -54,7 +54,6 @@ func validKey() (foundPublicKey ed25519.PublicKey, foundPrivateKey ed25519.Priva
 			waitGroup.Done()
 		}(i)
 	}
-
 	waitGroup.Wait()
 
 	return
