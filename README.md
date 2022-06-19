@@ -1,4 +1,7 @@
-# A Spring83 server
+# s83
+
+_a server and client implementing Spring '83_
+
 This server and client aim to track the latest drafts of the spring89 protocol specification.
 Currently this implementation is targetting [draft-20220616](https://github.com/robinsloan/spring-83-spec/blob/main/draft-20220616.md).
 
