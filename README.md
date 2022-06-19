@@ -67,8 +67,7 @@ go to http://localhost:8000 while the server is running
 
 ## License
 
-Unless a diffrent licence is established by [llimllib/springer](https://github.com/llimllib/springer/), this code is licensed under
-[GNU GPLv3](https://www.gnu.org/licenses/gpl-3.0.en.html).
+This work is released into the public domain.
 
 [llimllib/springer]: https://github.com/llimllib/springer
 [michael-lazer/lets-dance]: https://github.com/michael-lazer/lets-dance
