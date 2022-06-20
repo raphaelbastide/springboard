@@ -32,17 +32,19 @@ const MAX_SIG = (1 << 256) - 1
 
 const PAGE_TEMPLATE = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="utf-8">
 <title>Spring83</title>
-<base target="_blank"/>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌅</text></svg>">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 	body {
 		background-color: lightyellow;
 	}
 	#containers {
-	  display: flex;
-	  flex-wrap: wrap;
+		display: flex;
+		flex-wrap: wrap;
 	}
 	.board {
 		background-color: lightcyan;
@@ -53,20 +55,20 @@ const PAGE_TEMPLATE = `
 		cursor: pointer;
 	}
 	.description {
-	  font-family: monospace;
-	  font-size: xx-small;
-	  display: flex;
-	  flex-wrap: wrap;
-	  justify-content: space-between;
+		font-family: monospace;
+		font-size: xx-small;
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
 	}
 	.description {
-	  color: darkgray;
+		color: darkgray;
 	}
 	iframe {
 		border: 0;
 		height: 320px;
 		width: 100% ;
-                overflow: hidden;
+		overflow: hidden;
 		pointer-events: none;
 	}
 </style>
@@ -78,9 +80,9 @@ const PAGE_TEMPLATE = `
 		<div id="b{{ .Key }}" class="board" onclick="window.open('/{{.Key}}', '_blank', 'height=800,width=564');">
 			<iframe sandbox="allow-popups" src="/{{.Key}}"></iframe>
 			<div class="description">
-			  <span class="modified">{{.Modified}}</span>
-			  <span class="full-page-link">Full Page</span>
-			  <span class="key">{{.Key}}</span>
+				<span class="modified">{{.Modified}}</span>
+				<span class="full-page-link">Full Page</span>
+				<span class="key">{{.Key}}</span>
 			</div>
 		</div>
 	{{ end }}
@@ -185,8 +187,8 @@ func (s *Spring83Server) getBoard(key string) (*Board, error) {
 	}
 
 	return &Board{
-		Key:    key,
-		Board:  board,
+		Key:      key,
+		Board:    board,
 		Modified: modifiedTime,
 	}, nil
 }
@@ -375,8 +377,8 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 }
 
 type Board struct {
-	Key    string
-	Board  string
+	Key      string
+	Board    string
 	Modified time.Time
 }
 
@@ -405,8 +407,8 @@ func (s *Spring83Server) loadBoards() ([]Board, error) {
 		}
 
 		boards = append(boards, Board{
-			Key:    key,
-			Board:  board,
+			Key:      key,
+			Board:    board,
 			Modified: modifiedTime,
 		})
 	}
