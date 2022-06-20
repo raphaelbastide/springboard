@@ -25,7 +25,7 @@ import (
 	"text/template"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/glebarez/go-sqlite"
 )
 
 const MAX_SIG = (1 << 256) - 1
@@ -101,7 +101,7 @@ func initDB() *sql.DB {
 	// if the db doesn't exist, create it
 	if _, err := os.Stat(dbName); errors.Is(err, os.ErrNotExist) {
 		log.Printf("initializing new database")
-		db, err := sql.Open("sqlite3", dbName)
+		db, err := sql.Open("sqlite", dbName)
 		must(err)
 
 		initSQL := `
@@ -119,7 +119,7 @@ func initDB() *sql.DB {
 		return db
 	}
 
-	db, err := sql.Open("sqlite3", dbName)
+	db, err := sql.Open("sqlite", dbName)
 	must(err)
 	return db
 }
