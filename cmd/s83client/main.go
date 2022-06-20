@@ -134,7 +134,10 @@ func main() {
 
 	client := &http.Client{}
 
-	gmt, _ := time.LoadLocation("GMT")
+	gmt, err := time.LoadLocation("Etc/GMT")
+	if err != nil {
+		panic(err)
+	}
 	buffer, _ := time.ParseDuration("10m") // in case our computer is "fast" and the other computer is picky
 	body, err := ioutil.ReadAll(os.Stdin)
 	dt := time.Now().Add(-buffer).In(gmt)
