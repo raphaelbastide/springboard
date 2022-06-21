@@ -1,11 +1,4 @@
-// https://github.com/robinsloan/spring-83-spec/blob/main/draft-20220609.md
-// TODO:
-//  * wipe expired posts
-//  * check that the body contains a proper last-modified tag
-//  * implement peer sharing and receiving
-//  * add /<key> to show a single board
-//  * display each board in a region with an aspect ratio of either 1:sqrt(2) or sqrt(2):1
-package main
+package springboard
 
 import (
 	"bytes"
@@ -21,16 +14,26 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strconv"
 	"text/template"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
 )
 
-const MAX_SIG = (1 << 256) - 1
+func RunServer(port uint) {
+	db := initDB()
 
-const PAGE_TEMPLATE = `
+	server := newSpring83Server(db)
+	http.HandleFunc("/", server.RootHandler)
+
+	listenAddress := fmt.Sprintf(":%d", port)
+	log.Printf("Listening on port %d", port)
+	log.Fatal(http.ListenAndServe(listenAddress, nil))
+}
+
+const max_sig = (1 << 256) - 1
+
+const page_template = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -126,23 +129,8 @@ func initDB() *sql.DB {
 	return db
 }
 
-func main() {
-	db := initDB()
-
-	server := newSpring83Server(db)
-	http.HandleFunc("/", server.RootHandler)
-
-	port, err := strconv.ParseUint(os.Getenv("PORT"), 10, 16)
-	if err != nil {
-		port = 8000
-	}
-	listenAddress := fmt.Sprintf(":%d", port)
-	log.Printf("Listening on port %d", port)
-	log.Fatal(http.ListenAndServe(listenAddress, nil))
-}
-
 func mustTemplate() *template.Template {
-	f := PAGE_TEMPLATE
+	f := page_template
 
 	t, err := template.New("index").Parse(f)
 	if err != nil {
@@ -219,7 +207,7 @@ func (s *Spring83Server) getDifficulty() (float64, uint64, error) {
 	}
 
 	difficultyFactor := math.Pow(float64(count)/10_000_000, 4)
-	keyThreshold := uint64(MAX_SIG * (1.0 - difficultyFactor))
+	keyThreshold := uint64(max_sig * (1.0 - difficultyFactor))
 	return difficultyFactor, keyThreshold, nil
 }
 
