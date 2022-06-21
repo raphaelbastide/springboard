@@ -10,7 +10,6 @@ package main
 import (
 	"bytes"
 	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
@@ -21,6 +20,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"text/template"
 	"time"
@@ -141,7 +141,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(listenAddress, nil))
 }
 
-func mustTemplate(name string) *template.Template {
+func mustTemplate() *template.Template {
 	f := PAGE_TEMPLATE
 
 	t, err := template.New("index").Parse(f)
@@ -160,7 +160,7 @@ type Spring83Server struct {
 func newSpring83Server(db *sql.DB) *Spring83Server {
 	return &Spring83Server{
 		db:           db,
-		homeTemplate: mustTemplate("server/templates/index.html"),
+		homeTemplate: mustTemplate(),
 	}
 }
 
@@ -225,26 +225,17 @@ func (s *Spring83Server) getDifficulty() (float64, uint64, error) {
 
 func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Spring-Version", "83")
+	var err error
 
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		panic(err)
-	}
+	//do all checks we can do with the header first
 
-	if len(body) > 2217 {
-		http.Error(w, "Payload too large", http.StatusRequestEntityTooLarge)
-		return
-	}
-
-	//TODO: this time should also be checked againt the <time datetime="..."> tag
-	//      in fact per the spec, the header is just for convenience/fast failing
-	var mtime time.Time
-	if ifUnmodifiedHeader, ok := r.Header["If-Unmodified-Since"]; !ok {
+	var ifUnmodifiedSince time.Time
+	if ifUnmodifiedSinceHeader, ok := r.Header["If-Unmodified-Since"]; !ok {
 		http.Error(w, "Missing If-Unmodified-Since header", http.StatusBadRequest)
 		return
 	} else {
 		// spec says "in HTTP format", but it's not entirely clear if this matches?
-		if mtime, err = time.Parse(time.RFC1123, ifUnmodifiedHeader[0]); err != nil {
+		if ifUnmodifiedSince, err = time.Parse(time.RFC1123, ifUnmodifiedSinceHeader[0]); err != nil {
 			http.Error(w, "Invalid format for If-Unmodified-Since header", http.StatusBadRequest)
 			return
 		}
@@ -265,7 +256,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if curBoard != nil && mtime.Before(curBoard.Modified) {
+	if curBoard != nil && ifUnmodifiedSince.Before(curBoard.Modified) {
 		http.Error(w, "Old content", http.StatusConflict)
 		return
 	}
@@ -352,6 +343,34 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	if len(body) > 2217 {
+		http.Error(w, "Payload too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	dateTagRegExp := regexp.MustCompile(`(?i)<\s*time\s+datetime\s*=\s*"(\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ)"\s*\/?\s*>`)
+
+	submatches := dateTagRegExp.FindSubmatch(body)
+	if submatches == nil {
+		http.Error(w, `Missing <time datetime="YYYY-MM-DDTHH:MM:SSZ"> tag`, http.StatusBadRequest)
+		return
+	}
+	maybeDate := string(submatches[1][:])
+	modifiedTime, err := time.Parse("2006-01-02T15:04:05Z", maybeDate)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Could not parse date %s", maybeDate), http.StatusBadRequest)
+		return
+	}
+	if curBoard != nil && modifiedTime.Before(curBoard.Modified) {
+		http.Error(w, "Old content", http.StatusConflict)
+		return
+	}
+
 	// at this point, we should have met all the preconditions prior to the
 	// cryptographic check. By the spec, we should perform all
 	// non-cryptographic checks first.
@@ -360,14 +379,13 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: make the "freshness" date modifiable
-	modifiedTimeStr := mtime.Format(time.RFC3339)
+	modifiedTimeStr := modifiedTime.Format(time.RFC3339)
 	_, err = s.db.Exec(`
 		INSERT INTO boards (key, board, modified)
 		            values(?, ?, ?)
-	    ON CONFLICT(key) DO UPDATE SET
-			board=?,
-			modified=?
+		ON CONFLICT(key) DO UPDATE SET
+			    board=?,
+			    modified=?
 	`, keyStr, body, modifiedTimeStr, body, modifiedTimeStr)
 
 	if err != nil {
@@ -414,17 +432,6 @@ func (s *Spring83Server) loadBoards() ([]Board, error) {
 	}
 
 	return boards, nil
-}
-
-func randstr() string {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		panic("failed to read random bytes to create random string")
-	}
-
-	// format it in hexadecimal, and start it with an n because html can have
-	// problems with strings starting with 0 and we're using it as a nonce
-	return fmt.Sprintf("n%x", buf)
 }
 
 // for now, on loads to /, I'm just going to show all boards no matter what

@@ -27,7 +27,7 @@ After it gets a key, it will save it to `$HOME/.config/spring83`.
 load externl resources. You do not need to put
 
 ```html
-<meta http-equiv="last-modified" content="...">
+<time datatime="...">
 ```
 
 in `board.html`, s83client will do this for you.
