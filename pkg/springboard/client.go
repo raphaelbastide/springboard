@@ -40,12 +40,12 @@ func (client Client) PostBoard(boardText []byte, keyFolder string) (err error) {
 
 	gmt, err := time.LoadLocation("Etc/GMT")
 	if err != nil {
-		return
+		panic(err)
 	}
 	buffer, _ := time.ParseDuration("10m") // in case our computer is "fast" and the other computer is picky
 	dt := time.Now().Add(-buffer).In(gmt)
 	dtISO8601 := dt.Format("2006-01-02T15:04:05Z")
-	boardText = append([]byte(fmt.Sprintf(`<time  datetime="%s">`, dtISO8601)), boardText...)
+	boardText = append([]byte(fmt.Sprintf(`<time  datetime="%s"></time>`, dtISO8601)), boardText...)
 
 	if len(boardText) == 0 {
 		err = fmt.Errorf("input required")
@@ -60,7 +60,7 @@ func (client Client) PostBoard(boardText []byte, keyFolder string) (err error) {
 	fmt.Printf("URL: %s\n", url)
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(boardText))
 	if err != nil {
-		return
+		panic(err)
 	}
 
 	sig := ed25519.Sign(privkey, boardText)
@@ -74,13 +74,13 @@ func (client Client) PostBoard(boardText []byte, keyFolder string) (err error) {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return
+		panic(err)
 	}
 	defer resp.Body.Close()
 
 	responseBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return
+		panic(err)
 	}
 
 	fmt.Printf("%s: %s\n", resp.Status, responseBody)

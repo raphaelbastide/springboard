@@ -44,19 +44,19 @@ func GetKeys(keyPath string) (pubkey ed25519.PublicKey, privkey ed25519.PrivateK
 	if fileExists(pubfile) && fileExists(privfile) {
 		encodedPubKey, err = ioutil.ReadFile(pubfile)
 		if err != nil {
-			return
+			panic(err)
 		}
 		pubkey, err = hex.DecodeString(string(encodedPubKey[:]))
 		if err != nil {
-			return
+			panic(err)
 		}
 		encodedPrivKey, err = ioutil.ReadFile(privfile)
 		if err != nil {
-			return
+			panic(err)
 		}
 		privkey, err = hex.DecodeString(string(encodedPrivKey[:]))
 		if err != nil {
-			return
+			panic(err)
 		}
 	} else {
 		actualKeyPath := filepath.Dir(pubfile)
@@ -76,7 +76,7 @@ func GenerateValidKeys(keyPath string) (err error) {
 	actualKeyPath := filepath.Dir(privfile)
 
 	if err = os.MkdirAll(actualKeyPath, os.ModePerm); err != nil {
-		return
+		panic(err)
 	}
 
 	expiryYear := strconv.Itoa(time.Now().Year() + 1)

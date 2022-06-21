@@ -20,6 +20,8 @@ import (
 	_ "github.com/glebarez/go-sqlite"
 )
 
+const max_sig = (1 << 256) - 1
+
 func RunServer(port uint) {
 	db := initDB()
 
@@ -31,73 +33,11 @@ func RunServer(port uint) {
 	log.Fatal(http.ListenAndServe(listenAddress, nil))
 }
 
-const max_sig = (1 << 256) - 1
-
-const page_template = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Spring83</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌅</text></svg>">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-	body {
-		background-color: lightyellow;
-	}
-	#containers {
-		display: flex;
-		flex-wrap: wrap;
-	}
-	.board {
-		background-color: lightcyan;
-		border: 1px dotted black;
-		margin: 5px;
-		padding: 10px;
-		width: min-content;
-		cursor: pointer;
-	}
-	.description {
-		font-family: monospace;
-		font-size: xx-small;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-	}
-	.description {
-		color: darkgray;
-	}
-	iframe {
-		border: 0;
-		height: 320px;
-		width: 100% ;
-		overflow: hidden;
-		pointer-events: none;
-	}
-</style>
-</head>
-<body>
-<h1>Spring 83</h1>
-<div id="containers">
-	{{ range .Boards }}
-		<div id="b{{ .Key }}" class="board" onclick="window.open('/{{.Key}}', '_blank', 'height=800,width=564');">
-			<iframe sandbox="allow-popups" src="/{{.Key}}"></iframe>
-			<div class="description">
-				<span class="modified">{{.Modified}}</span>
-				<span class="full-page-link">Full Page</span>
-				<span class="key">{{.Key}}</span>
-			</div>
-		</div>
-	{{ end }}
-</div>
-</body>
-</html>
-`
-
-func must(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
+type Board struct {
+	Key       string
+	Board     string
+	Modified  time.Time
+	Signature string
 }
 
 func initDB() *sql.DB {
@@ -107,13 +47,16 @@ func initDB() *sql.DB {
 	if _, err := os.Stat(dbName); errors.Is(err, os.ErrNotExist) {
 		log.Printf("initializing new database")
 		db, err := sql.Open("sqlite", dbName)
-		must(err)
+		if err != nil {
+			panic(err)
+		}
 
 		initSQL := `
 		CREATE TABLE boards (
 			key text NOT NULL PRIMARY KEY,
 			board text,
-			modified text
+			modified text,
+			signature test
 		);
 		`
 
@@ -125,7 +68,9 @@ func initDB() *sql.DB {
 	}
 
 	db, err := sql.Open("sqlite", dbName)
-	must(err)
+	if err != nil {
+		panic(err)
+	}
 	return db
 }
 
@@ -154,14 +99,14 @@ func newSpring83Server(db *sql.DB) *Spring83Server {
 
 func (s *Spring83Server) getBoard(key string) (*Board, error) {
 	query := `
-		SELECT key, board, modified
+		SELECT key, board, modified, signature
 		FROM boards
 		WHERE key=?
 	`
 	row := s.db.QueryRow(query, key)
 
-	var dbkey, board, modified string
-	err := row.Scan(&dbkey, &board, &modified)
+	var dbkey, board, modified, signature string
+	err := row.Scan(&dbkey, &board, &modified, &signature)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			return nil, err
@@ -175,9 +120,10 @@ func (s *Spring83Server) getBoard(key string) (*Board, error) {
 	}
 
 	return &Board{
-		Key:      key,
-		Board:    board,
-		Modified: modifiedTime,
+		Key:       key,
+		Board:     board,
+		Modified:  modifiedTime,
+		Signature: signature,
 	}, nil
 }
 
@@ -218,10 +164,8 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	//do all checks we can do with the header first
 
 	var ifUnmodifiedSince time.Time
-	if ifUnmodifiedSinceHeader, ok := r.Header["If-Unmodified-Since"]; !ok {
-		http.Error(w, "Missing If-Unmodified-Since header", http.StatusBadRequest)
-		return
-	} else {
+	ifUnmodifiedSinceHeader := r.Header["If-Unmodified-Since"]
+	if ifUnmodifiedSinceHeader != nil {
 		// spec says "in HTTP format", but it's not entirely clear if this matches?
 		if ifUnmodifiedSince, err = time.Parse(time.RFC1123, ifUnmodifiedSinceHeader[0]); err != nil {
 			http.Error(w, "Invalid format for If-Unmodified-Since header", http.StatusBadRequest)
@@ -244,7 +188,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if curBoard != nil && ifUnmodifiedSince.Before(curBoard.Modified) {
+	if curBoard != nil && ifUnmodifiedSinceHeader != nil && ifUnmodifiedSince.Before(curBoard.Modified) {
 		http.Error(w, "Old content", http.StatusConflict)
 		return
 	}
@@ -277,23 +221,24 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var signature []byte
+	var hexSignature []byte
+	var strSignature string
 	if signatureHeaders, ok := r.Header["Spring-Signature"]; !ok {
 		http.Error(w, "missing Spring-Signature header", http.StatusBadRequest)
 		return
 	} else {
-		sig := signatureHeaders[0]
-		if len(sig) < 1 {
+		strSignature = signatureHeaders[0]
+		if len(strSignature) < 1 {
 			http.Error(w, "Invalid Signature", http.StatusBadRequest)
 			return
 		}
 
-		if len(sig) != 128 {
-			http.Error(w, fmt.Sprintf("Expecting 64-bit signature %s %d", sig, len(sig)), http.StatusBadRequest)
+		if len(strSignature) != 128 {
+			http.Error(w, fmt.Sprintf("Expecting 64-bit signature %s %d", strSignature, len(strSignature)), http.StatusBadRequest)
 			return
 		}
 
-		signature, err = hex.DecodeString(sig)
+		hexSignature, err = hex.DecodeString(strSignature)
 		if err != nil {
 			http.Error(w, "Unable to decode signature", http.StatusBadRequest)
 			return
@@ -305,7 +250,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	// The server may also use a denylist to block certain keys, rejecting all PUTs for those keys.
 	denylist := []string{"fad415fbaa0339c4fd372d8287e50f67905321ccfd9c43fa4c20ac40afed1983"}
 	for _, key := range denylist {
-		if bytes.Compare(signature, []byte(key)) == 0 {
+		if bytes.Compare(hexSignature, []byte(key)) == 0 {
 			http.Error(w, "Denied", http.StatusUnauthorized)
 		}
 	}
@@ -362,30 +307,25 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	// at this point, we should have met all the preconditions prior to the
 	// cryptographic check. By the spec, we should perform all
 	// non-cryptographic checks first.
-	if !ed25519.Verify(key, body, signature) {
+	if !ed25519.Verify(key, body, hexSignature) {
 		http.Error(w, "Invalid signature", http.StatusBadRequest)
 		return
 	}
 
 	modifiedTimeStr := modifiedTime.Format(time.RFC3339)
 	_, err = s.db.Exec(`
-		INSERT INTO boards (key, board, modified)
-		            values(?, ?, ?)
+		INSERT INTO boards (key, board, modified, signature)
+		            values(?, ?, ?, ?)
 		ON CONFLICT(key) DO UPDATE SET
 			    board=?,
-			    modified=?
-	`, keyStr, body, modifiedTimeStr, body, modifiedTimeStr)
+			    modified=?,
+			    signature=?
+	`, keyStr, body, modifiedTimeStr, strSignature, body, modifiedTimeStr, strSignature)
 
 	if err != nil {
 		log.Printf("%s", err)
 		http.Error(w, "Server error", http.StatusInternalServerError)
 	}
-}
-
-type Board struct {
-	Key      string
-	Board    string
-	Modified time.Time
 }
 
 func (s *Spring83Server) loadBoards() ([]Board, error) {
@@ -473,13 +413,26 @@ func (s *Spring83Server) showBoard(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Spring-Difficulty", fmt.Sprintf("%f", difficultyFactor))
 	w.Header().Add("Content-Type", "text/html;charset=utf-8")
+	w.Header().Add("Spring-Signature", board.Signature)
 
 	w.Header().Add("Content-Security-Policy", "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; form-action *; connect-src *;")
 
 	w.Write([]byte(board.Board))
 }
 
+func (s *Spring83Server) showOptions(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Spring83Server) addCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.Header().Add("Access-Control-Allow-Headers", "Content-Type, If-Modified-Since, Spring-Signature, Spring-Version")
+	w.Header().Add("Access-Control-Expose-Headers", "Content-Type, Last-Modified, Spring-Difficulty, Spring-Signature, Spring-Version")
+}
+
 func (s *Spring83Server) RootHandler(w http.ResponseWriter, r *http.Request) {
+	s.addCORSHeaders(w, r)
 	if r.Method == "PUT" {
 		s.publishBoard(w, r)
 	} else if r.Method == "GET" {
@@ -488,7 +441,70 @@ func (s *Spring83Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.showBoard(w, r)
 		}
+	} else if r.Method == "OPTIONS" {
+		s.showOptions(w, r)
 	} else {
 		http.Error(w, "Invalid method", http.StatusBadRequest)
 	}
 }
+
+const page_template = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spring83</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌅</text></svg>">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+	body {
+		background-color: lightyellow;
+	}
+	#containers {
+		display: flex;
+		flex-wrap: wrap;
+	}
+	.board {
+		background-color: lightcyan;
+		border: 1px dotted black;
+		margin: 5px;
+		padding: 10px;
+		width: min-content;
+		cursor: pointer;
+	}
+	.description {
+		font-family: monospace;
+		font-size: xx-small;
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+	}
+	.description {
+		color: darkgray;
+	}
+	iframe {
+		border: 0;
+		height: 320px;
+		width: 100% ;
+		overflow: hidden;
+		pointer-events: none;
+	}
+</style>
+</head>
+<body>
+<h1>Spring 83</h1>
+<div id="containers">
+	{{ range .Boards }}
+		<div id="b{{ .Key }}" class="board" onclick="window.open('/{{.Key}}', '_blank', 'height=800,width=564');">
+			<iframe sandbox="allow-popups" src="/{{.Key}}"></iframe>
+			<div class="description">
+				<span class="modified">{{.Modified}}</span>
+				<span class="full-page-link">Full Page</span>
+				<span class="key">{{.Key}}</span>
+			</div>
+		</div>
+	{{ end }}
+</div>
+</body>
+</html>
+`
