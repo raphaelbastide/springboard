@@ -1,4 +1,4 @@
-# s83
+# springboard
 
 _a server and client implementing Spring '83_
 
