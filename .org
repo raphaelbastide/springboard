@@ -1,0 +1,88 @@
+* Resources
+  - [[https://github.com/robinsloan/spring-83-spec/blob/main/draft-20220616.md][Spring 83 Spec Draft]]
+
+* TODO Federation
+** using federation to moderate content
+Mastodon gets some group decentralized moderation benefit by
+1. requiring members to be invited to a Mastodon instance
+2. federates blocking servers that don't moderate bad behavior
+
+While Spring '83 doesn't have any mechanism to block bad actors from posting
+boards or even spewing out harmful (e.g. hate speech) boards to every known
+spring server, federation provides a unique opportunity to allow good
+distributed moderation practices.
+
+Lets say there are two federated servers: Alice and Bob, and let's say there's a
+malicious actor, who Dr. Evil who has been posting to Bob's server, but Bob is
+on vacation and hasn't noticed yet. Alice notices Dr. Evil's boards are harmful
+and blocks them from her server. The next time Dr. Evil posts to Bob's server
+and the server tries to propagate it, Alice's server responds to the PUT with
+403 Forbidden, because posts by that key are forbidden on Alice's server. Bob's
+server notices the 403 and /may/ chose to also block Dr. Evil from his server.
+
+If Bob does a poor job of moderating his server or encourages bad behavior,
+Alice may decide to un-federate and block Bob's server from propagating to her
+server. (Though this would require that /servers/ had their own asymmetric keys
+and that they countersigned boards that they were propagating. Otherwise Alice's
+server doesn't really know where propagated boards are coming from.)
+
+** DONE Refactor into springboard package
+** TODO background worker/go routine to federate
+    :LOGBOOK:
+    CLOCK: [2022-06-23 Thu 14:04]
+    CLOCK: [2022-06-23 Thu 13:04]--[2022-06-23 Thu 10:29] =>  0:25
+    CLOCK: [2022-06-23 Thu 10:02]--[2022-06-23 Thu 10:27] =>  0:25
+    CLOCK: [2022-06-23 Thu 09:31]--[2022-06-23 Thu 09:56] =>  0:25
+    :END:
+*** threads
+**** Polling wait strategy:
+      1. board is posted
+      2. server adds ToFoward[key] = lastTimeUpdated
+      3. polling subroutine checks ToForward every X seconds, if one of the entries is past due
+         1. loop through federates
+         2. make attempt
+         3. somehow log back into ToForward
+      Oh, this is getting complicated fast, how about
+**** kick off goroutine model (tracking with global map)
+      1. board is posted
+      2. for each federate
+         1. if ToForward[compositeKey] does not exist
+            1. server adds ToForward[key] = timeStarts (now + 5 minutes)
+            2. server kicks off go routine with sleep time of five minutes
+         2. else
+            1. noop (someone's already waiting)
+               
+      Go Routing (e.g. propogateBoard(compositeKey)
+      1. giveUpTime = ToForward[compositeKey] + 1 hour
+      2. sleepTime = 5 minutes
+      3. attempt = 0
+      4. while time.Now < giveUpTime
+         1. sleeps for sleepTime
+         2. attempt to post board
+         3. if successful:
+            1. delete entry in ToForward
+            2. return
+         4. if unsuccessful
+            1. attempt++
+            2. sleepTime = rand(0, 5 * 2^attempt)
+               1. increment attempt
+** config
+    federates:
+      - https://0l0.lol
+    blocked:
+      - ...
+         
+         
+         
+
+
+    
+
+   
+   
+       
+         
+      [[https://pkg.go.dev/sync#Map][sync.Map]] provides a threadsafe way of accessing a map
+      We could keep an entry for each key and... periodically check in on this map
+      Spec says wait 5 minutes before trying to sync
+*** definition of federation
