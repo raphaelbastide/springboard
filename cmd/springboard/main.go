@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strconv"
 
 	"github.com/motevets/s83/pkg/springboard"
 )
@@ -65,18 +64,22 @@ func generateKey() (err error) {
 	return
 }
 
-func serve() {
+func serve() (err error) {
 	if len(os.Args) > 2 && (os.Args[2] == "-h" || os.Args[2] == "--help") {
 		printServeHelp()
 		return
 	}
 
-	port, err := strconv.ParseUint(os.Getenv("PORT"), 10, 16)
-	if err != nil {
-		port = 8000
+	var config Config
+	if len(os.Args) > 2 {
+		config, err = ConfigFromFile(os.Args[2])
+		if err != nil {
+			return
+		}
 	}
 
-	springboard.RunServer(uint(port))
+	springboard.RunServer(config.Port(), config.Federates())
+	return
 }
 
 func post() (err error) {
@@ -94,7 +97,7 @@ func post() (err error) {
 
 	client := springboard.NewClient(apiUrl)
 	body, err := ioutil.ReadAll(os.Stdin)
-	err = client.PostBoard(body, keyPath)
+	err = client.SignAndPostBoard(body, keyPath)
 
 	return
 }

@@ -3,13 +3,15 @@ package springboard
 import (
 	"bytes"
 	"crypto/ed25519"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 func fileExists(name string) bool {
@@ -28,15 +30,43 @@ func NewClient(apiUrl string) (client Client) {
 	return
 }
 
-func (client Client) PostBoard(boardText []byte, keyFolder string) (err error) {
-	serverUrl := client.apiUrl
-
-	pubkey, privkey, err := GetKeys(keyFolder)
+func (client Client) PostSignedBoard(board Board) (err error) {
+	httpClient := &http.Client{}
+	url := fmt.Sprintf("%s/%s", client.apiUrl, board.Key)
+	fmt.Printf("URL: %s\n", url)
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBufferString(board.Board))
 	if err != nil {
 		return
 	}
 
-	httpClient := &http.Client{}
+	fmt.Printf("Spring-Signature: %s\n", board.Signature)
+	req.Header.Set("Spring-Signature", board.Signature)
+
+	dtHTTP := board.Modified.Format(time.RFC1123)
+	req.Header.Set("If-Unmodified-Since", dtHTTP)
+	req.Header.Set("Spring-Version", "83")
+	req.Header.Set("Content-Type", "text/html;charset=utf-8")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	responseBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+
+	fmt.Printf("%s: %s\n", resp.Status, responseBody)
+	return
+}
+
+func (client Client) SignAndPostBoard(boardText []byte, keyFolder string) (err error) {
+	pubkey, privkey, err := GetKeys(keyFolder)
+	if err != nil {
+		return
+	}
 
 	gmt, err := time.LoadLocation("Etc/GMT")
 	if err != nil {
@@ -56,33 +86,16 @@ func (client Client) PostBoard(boardText []byte, keyFolder string) (err error) {
 		return
 	}
 
-	url := fmt.Sprintf("%s/%x", serverUrl, pubkey)
-	fmt.Printf("URL: %s\n", url)
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewBuffer(boardText))
-	if err != nil {
-		panic(err)
-	}
-
 	sig := ed25519.Sign(privkey, boardText)
-	fmt.Printf("Spring-Signature: %x\n", sig)
-	req.Header.Set("Spring-Signature", fmt.Sprintf("%x", sig))
-
-	dtHTTP := dt.Format(time.RFC1123)
-	req.Header.Set("If-Unmodified-Since", dtHTTP)
-	req.Header.Set("Spring-Version", "83")
-	req.Header.Set("Content-Type", "text/html;charset=utf-8")
-
-	resp, err := httpClient.Do(req)
+	err = client.PostSignedBoard(Board{
+		Key:       hex.EncodeToString(pubkey),
+		Board:     string(boardText[:]),
+		Modified:  dt,
+		Signature: hex.EncodeToString(sig),
+	})
 	if err != nil {
-		panic(err)
+		err = errors.Wrap(err, "Could not post board")
+		return
 	}
-	defer resp.Body.Close()
-
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("%s: %s\n", resp.Status, responseBody)
 	return
 }

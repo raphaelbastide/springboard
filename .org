@@ -29,7 +29,12 @@ server doesn't really know where propagated boards are coming from.)
 ** DONE Refactor into springboard package
 ** TODO background worker/go routine to federate
     :LOGBOOK:
-    CLOCK: [2022-06-23 Thu 14:04]
+    CLOCK: [2022-06-25 Sat 10:33]--[2022-06-25 Sat 10:58] =>  0:25
+    CLOCK: [2022-06-24 Fri 16:10]--[2022-06-24 Fri 18:30] =>  2:20
+    CLOCK: [2022-06-24 Fri 15:38]--[2022-06-24 Fri 16:03] =>  0:25
+    CLOCK: [2022-06-24 Fri 15:05]--[2022-06-24 Fri 15:30] =>  0:25
+    CLOCK: [2022-06-23 Thu 14:36]--[2022-06-23 Thu 14:57] =>  0:21
+    CLOCK: [2022-06-23 Thu 14:04]--[2022-06-23 Thu 14:29] =>  0:25
     CLOCK: [2022-06-23 Thu 13:04]--[2022-06-23 Thu 10:29] =>  0:25
     CLOCK: [2022-06-23 Thu 10:02]--[2022-06-23 Thu 10:27] =>  0:25
     CLOCK: [2022-06-23 Thu 09:31]--[2022-06-23 Thu 09:56] =>  0:25
@@ -67,22 +72,15 @@ server doesn't really know where propagated boards are coming from.)
             2. sleepTime = rand(0, 5 * 2^attempt)
                1. increment attempt
 ** config
+:LOGBOOK:
+CLOCK: [2022-06-23 Thu 18:26]--[2022-06-23 Thu 18:51] =>  0:25
+CLOCK: [2022-06-23 Thu 17:55]--[2022-06-23 Thu 18:20] =>  0:25
+CLOCK: [2022-06-23 Thu 17:14]--[2022-06-23 Thu 17:39] =>  0:25
+CLOCK: [2022-06-23 Thu 16:24]--[2022-06-23 Thu 16:49] =>  0:25
+:END:
     federates:
       - https://0l0.lol
     blocked:
       - ...
-         
-         
-         
 
-
-    
-
-   
-   
-       
-         
-      [[https://pkg.go.dev/sync#Map][sync.Map]] provides a threadsafe way of accessing a map
-      We could keep an entry for each key and... periodically check in on this map
-      Spec says wait 5 minutes before trying to sync
-*** definition of federation
+** definition of federation

@@ -11,9 +11,11 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"text/template"
 	"time"
 
@@ -22,22 +24,15 @@ import (
 
 const max_sig = (1 << 256) - 1
 
-func RunServer(port uint) {
+func RunServer(port uint, federates []string) (err error) {
 	db := initDB()
+	server := newSpring83Server(db, federates)
 
-	server := newSpring83Server(db)
 	http.HandleFunc("/", server.RootHandler)
-
 	listenAddress := fmt.Sprintf(":%d", port)
 	log.Printf("Listening on port %d", port)
 	log.Fatal(http.ListenAndServe(listenAddress, nil))
-}
-
-type Board struct {
-	Key       string
-	Board     string
-	Modified  time.Time
-	Signature string
+	return
 }
 
 func initDB() *sql.DB {
@@ -86,14 +81,18 @@ func mustTemplate() *template.Template {
 }
 
 type Spring83Server struct {
-	db           *sql.DB
-	homeTemplate *template.Template
+	db                 *sql.DB
+	homeTemplate       *template.Template
+	federates          []string
+	propagationTracker *propagationTracker
 }
 
-func newSpring83Server(db *sql.DB) *Spring83Server {
+func newSpring83Server(db *sql.DB, federates []string) *Spring83Server {
 	return &Spring83Server{
-		db:           db,
-		homeTemplate: mustTemplate(),
+		db:                 db,
+		homeTemplate:       mustTemplate(),
+		federates:          federates,
+		propagationTracker: newPropagationTracker(),
 	}
 }
 
@@ -161,6 +160,14 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Spring-Version", "83")
 	var err error
 
+	key, err := hex.DecodeString(r.URL.Path[1:])
+	if err != nil || len(key) != 32 {
+		http.Error(w, "Invalid key", http.StatusBadRequest)
+		return
+	}
+	keyStr := fmt.Sprintf("%x", key)
+	log.Printf("Receiving board for %s", keyStr)
+
 	//do all checks we can do with the header first
 
 	var ifUnmodifiedSince time.Time
@@ -173,13 +180,6 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	key, err := hex.DecodeString(r.URL.Path[1:])
-	if err != nil || len(key) != 32 {
-		http.Error(w, "Invalid key", http.StatusBadRequest)
-		return
-	}
-	keyStr := fmt.Sprintf("%x", key)
-
 	// curBoard is nil if there is no existing board for this key, and a Board object otherwise
 	curBoard, err := s.getBoard(keyStr)
 	if err != nil {
@@ -188,7 +188,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if curBoard != nil && ifUnmodifiedSinceHeader != nil && ifUnmodifiedSince.Before(curBoard.Modified) {
+	if curBoard != nil && ifUnmodifiedSinceHeader != nil && !curBoard.Modified.Before(ifUnmodifiedSince) {
 		http.Error(w, "Old content", http.StatusConflict)
 		return
 	}
@@ -299,7 +299,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Could not parse date %s", maybeDate), http.StatusBadRequest)
 		return
 	}
-	if curBoard != nil && modifiedTime.Before(curBoard.Modified) {
+	if curBoard != nil && !curBoard.Modified.Before(modifiedTime) {
 		http.Error(w, "Old content", http.StatusConflict)
 		return
 	}
@@ -312,7 +312,12 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	modifiedTimeStr := modifiedTime.Format(time.RFC3339)
+	newBoard := Board{
+		Key:       keyStr,
+		Board:     string(body[:]),
+		Modified:  modifiedTime,
+		Signature: strSignature,
+	}
 	_, err = s.db.Exec(`
 		INSERT INTO boards (key, board, modified, signature)
 		            values(?, ?, ?, ?)
@@ -320,11 +325,21 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 			    board=?,
 			    modified=?,
 			    signature=?
-	`, keyStr, body, modifiedTimeStr, strSignature, body, modifiedTimeStr, strSignature)
+		`, newBoard.Key, newBoard.Board, newBoard.ModifiedAtDBFormat(), newBoard.Signature,
+		newBoard.Board, newBoard.ModifiedAtDBFormat(), newBoard.Signature)
 
 	if err != nil {
 		log.Printf("%s", err)
 		http.Error(w, "Server error", http.StatusInternalServerError)
+	}
+
+	s.propagateBoard(newBoard)
+}
+
+func (server *Spring83Server) propagateBoard(board Board) {
+	rand.Seed(time.Now().UnixNano())
+	for _, federate := range server.federates {
+		server.propagationTracker.Schedule(board, federate)
 	}
 }
 
@@ -424,6 +439,11 @@ func (s *Spring83Server) showOptions(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Spring83Server) showFederation(w http.ResponseWriter, r *http.Request) {
+	federationText := fmt.Sprintf("%s\n", strings.Join(s.federates, "\n"))
+	w.Write([]byte(federationText))
+}
+
 func (s *Spring83Server) addCORSHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Access-Control-Allow-Methods", "GET, PUT, OPTIONS")
 	w.Header().Add("Access-Control-Allow-Origin", "*")
@@ -439,7 +459,11 @@ func (s *Spring83Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 		if len(r.URL.Path) == 1 {
 			s.showAllBoards(w, r)
 		} else {
-			s.showBoard(w, r)
+			if r.URL.Path[1:] == "federation.txt" {
+				s.showFederation(w, r)
+			} else {
+				s.showBoard(w, r)
+			}
 		}
 	} else if r.Method == "OPTIONS" {
 		s.showOptions(w, r)
