@@ -278,7 +278,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		panic(err)
+		http.Error(w, "Could not read body", http.StatusInternalServerError)
 	}
 
 	if len(body) > 2217 {

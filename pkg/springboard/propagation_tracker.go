@@ -154,6 +154,8 @@ func (tracker *propagationTracker) processQueue() {
 		tracker.mutex.Lock()
 		if !tracker.queue.AnyQueued() {
 			log.Print("Queue empty, processor thread spinning down")
+			tracker.bgThreadRunning = false
+			tracker.mutex.Unlock()
 			return
 		}
 		if time.Now().After(tracker.queue.NextAttempt()) {
