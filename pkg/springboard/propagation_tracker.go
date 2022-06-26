@@ -112,43 +112,44 @@ func newPropagationTracker() *propagationTracker {
 }
 
 func (tracker *propagationTracker) Schedule(board Board, server string) {
-	tracker.mutex.Lock()
-	defer tracker.mutex.Unlock()
-	queuedItem, alreadyQueued := tracker.queue.LookUp(board.Key, server)
-	if alreadyQueued {
-		queuedItem.attempts = 0
-		queuedItem.board = board
-		queuedItem.queuedAt = time.Now()
-		queuedItem.nextAttempt = time.Now().Add(5 * time.Minute)
-		heap.Fix(tracker.queue, queuedItem.index)
-		log.Printf("%s already queued, resetting the time to %s", queuedItem.lookupKey().Shorthand(), queuedItem.nextAttempt.Format(time.RFC3339))
-	} else {
-		newItem := &relayInformation{
-			board:       board,
-			destination: server,
-			queuedAt:    time.Now(),
-			nextAttempt: time.Now().Add(5 * time.Minute),
+	go func() {
+		tracker.mutex.Lock()
+		queuedItem, alreadyQueued := tracker.queue.LookUp(board.Key, server)
+		if alreadyQueued {
+			queuedItem.attempts = 0
+			queuedItem.board = board
+			queuedItem.queuedAt = time.Now()
+			queuedItem.nextAttempt = time.Now().Add(5 * time.Minute)
+			heap.Fix(tracker.queue, queuedItem.index)
+			log.Printf("%s already queued, resetting the time to %s", queuedItem.lookupKey().Shorthand(), queuedItem.nextAttempt.Format(time.RFC3339))
+		} else {
+			newItem := &relayInformation{
+				board:       board,
+				destination: server,
+				queuedAt:    time.Now(),
+				nextAttempt: time.Now().Add(5 * time.Minute),
+			}
+			heap.Push(tracker.queue, newItem)
+			log.Printf("%s queuing for propagation in 5 minutes (%s)", newItem.lookupKey().Shorthand(), newItem.nextAttempt.Format(time.RFC3339))
+			if !tracker.bgThreadRunning {
+				go tracker.processQueue()
+			}
 		}
-		heap.Push(tracker.queue, newItem)
-		log.Printf("%s queuing for propagation in 5 minutes (%s)", newItem.lookupKey().Shorthand(), newItem.nextAttempt.Format(time.RFC3339))
-		if !tracker.bgThreadRunning {
-			go tracker.processQueue()
-		}
-	}
+		tracker.mutex.Unlock()
+	}()
 }
 
 func (tracker *propagationTracker) processQueue() {
-	defer tracker.mutex.Unlock()
 	tracker.mutex.Lock()
 	if tracker.bgThreadRunning {
 		log.Print("RACE CONDITION: tried to kick off the background thread with it already running")
+		tracker.mutex.Unlock()
 		return
 	} else {
 		log.Print("Queue processor thread spinning up")
 		tracker.bgThreadRunning = true
-		defer func() { tracker.bgThreadRunning = false }()
+		tracker.mutex.Unlock()
 	}
-	tracker.mutex.Unlock()
 	for true {
 		tracker.mutex.Lock()
 		if !tracker.queue.AnyQueued() {

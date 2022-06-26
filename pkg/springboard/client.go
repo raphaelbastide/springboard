@@ -75,7 +75,7 @@ func (client Client) SignAndPostBoard(boardText []byte, keyFolder string) (err e
 	buffer, _ := time.ParseDuration("10m") // in case our computer is "fast" and the other computer is picky
 	dt := time.Now().Add(-buffer).In(gmt)
 	dtISO8601 := dt.Format("2006-01-02T15:04:05Z")
-	boardText = append([]byte(fmt.Sprintf(`<time  datetime="%s"></time>`, dtISO8601)), boardText...)
+	boardText = append([]byte(fmt.Sprintf(`<time datetime="%s"></time>`, dtISO8601)), boardText...)
 
 	if len(boardText) == 0 {
 		err = fmt.Errorf("input required")
