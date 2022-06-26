@@ -11,26 +11,27 @@ You can see it in action at [spring83.kindrobot.ca](https://spring83.kindrobot.c
 
 You can download precompiled binaries for your system / architecture from the releases tab.
 
-Run `./s83client --help` (or `.\s83client.exe --help` on Windows) to get started posting to a spring83 server.
+Run `./springboard help` (or `.\springboard.exe help` on Windows) to get started posting to a spring83 server.
 
 An example:
 
 ```bash
-./s83client https://spring83.kindrobot.ca < board.html
+./springboard generate-keys
+echo "<p>Hello, world!</p>" > board.html
+./springboard post https://spring83.kindrobot.ca < board.html
 ```
 
-On the first run, s83client will generate/find a key that meets the spring83
-specification. This may take a few minutes and use a lot of proccessing power.
-After it gets a key, it will save it to `$HOME/.config/spring83`. 
+`./springboard generate-keys` may take several minutes and use a lot of proccessing power.
+By default, it will save the key pair to `$HOME/.config/spring83`. 
 
 `board.html` can be any valid-ish HTML5 document. It may not have scripts or
-load externl resources. You do not need to put
+load externl resources. You should not put:
 
 ```html
 <time datatime="...">
 ```
 
-in `board.html`, s83client will do this for you.
+in `board.html`, springboard will do this for you.
 
 ### Help, my key doesn't work
 
