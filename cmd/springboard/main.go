@@ -157,6 +157,6 @@ Valid SUBCOMMANDS are:
 
   post (posts a board to a server)
   serve (starts a Spring '83 server)
-  generate-keys (generates a new Spring '83 compliant key)
+  generate-key (generates a new Spring '83 compliant key)
   help (shows the help for a sub-command)`)
 }

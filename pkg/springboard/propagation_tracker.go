@@ -152,6 +152,7 @@ func (tracker *propagationTracker) processQueue() {
 	for true {
 		tracker.mutex.Lock()
 		if !tracker.queue.AnyQueued() {
+			log.Print("Queue empty, processor thread spinning down")
 			return
 		}
 		if time.Now().After(tracker.queue.NextAttempt()) {
@@ -161,7 +162,6 @@ func (tracker *propagationTracker) processQueue() {
 			err := client.PostSignedBoard(nextUp.board)
 			if err == nil {
 				log.Printf("%s successfully propagated", logTag)
-				return
 			} else {
 				log.Printf("%s error posting board: %s", logTag, err.Error())
 				nextUp.attempts++
@@ -181,7 +181,6 @@ func (tracker *propagationTracker) processQueue() {
 		tracker.mutex.Unlock()
 		time.Sleep(time.Second)
 	}
-	log.Print("Queue empty, processor thread spinning down")
 }
 
 func pow2(y int) (val int) {
