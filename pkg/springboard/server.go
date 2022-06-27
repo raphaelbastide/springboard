@@ -167,7 +167,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	keyStr := fmt.Sprintf("%x", key)
 	log.Printf("Receiving board for %s", keyStr)
-	log.Printf("%#v", r.Header)
+	log.Printf("%+v", r.Header)
 
 	//do all checks we can do with the header first
 
