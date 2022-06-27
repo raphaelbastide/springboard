@@ -35,6 +35,10 @@ func main() {
 }
 
 func help() {
+	if len(os.Args) <= 2 {
+		printRootHelp()
+		return
+	}
 	switch os.Args[2] {
 	case "post":
 		printPostHelp()
