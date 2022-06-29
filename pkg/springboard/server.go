@@ -517,7 +517,6 @@ const page_template = `
 </style>
 </head>
 <body>
-<h1>Spring 83</h1>
 <div id="containers">
 	{{ range .Boards }}
 		<div id="b{{ .Key }}" class="board" onclick="window.open('/{{.Key}}', '_blank', 'height=800,width=564');">
