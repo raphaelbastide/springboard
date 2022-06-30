@@ -27,11 +27,14 @@ const max_sig = (1 << 256) - 1
 func RunServer(port uint, federates []string) (err error) {
 	db := initDB()
 	server := newSpring83Server(db, federates)
-
+	go server.periodicallyPurgeOldBoards()
 	http.HandleFunc("/", server.RootHandler)
 	listenAddress := fmt.Sprintf(":%d", port)
 	log.Printf("Listening on port %d", port)
-	log.Fatal(http.ListenAndServe(listenAddress, nil))
+	err = http.ListenAndServe(listenAddress, nil)
+	if err != nil {
+		return err
+	}
 	return
 }
 
@@ -67,6 +70,34 @@ func initDB() *sql.DB {
 		panic(err)
 	}
 	return db
+}
+
+func (s *Spring83Server) periodicallyPurgeOldBoards() {
+	for true {
+		expiry := time.Now().Add(-22 * 24 * time.Hour).Format(time.RFC3339)
+		log.Printf("Deleting boards past their TTL (published before %s)", expiry)
+		query := `
+		  SELECT COUNT(*)
+		  FROM boards
+		  WHERE DATETIME(modified) < DATETIME(?)
+		`
+		row := s.db.QueryRow(query, expiry)
+		var count string
+		err := row.Scan(&count)
+		if err != nil {
+			log.Println("  Error determining how many boards to delete", err)
+		}
+		log.Printf("  %s boards to delete", count)
+		query = `
+		  DELETE FROM boards
+		  WHERE DATETIME(modified) < DATETIME(?)
+		`
+		_, err = s.db.Exec(query, expiry)
+		if err != nil {
+			log.Println("  Error running deletion query", err)
+		}
+		time.Sleep(time.Minute)
+	}
 }
 
 func mustTemplate() *template.Template {
