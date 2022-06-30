@@ -24,7 +24,7 @@ import (
 
 const max_sig = (1 << 256) - 1
 
-func RunServer(port uint, federates []string) (err error) {
+func RunServer(port uint, federates []string, fqdn string) (err error) {
 	db := initDB()
 	server := newSpring83Server(db, federates)
 
@@ -85,14 +85,16 @@ type Spring83Server struct {
 	homeTemplate       *template.Template
 	federates          []string
 	propagationTracker *propagationTracker
+	fqdn               string
 }
 
-func newSpring83Server(db *sql.DB, federates []string) *Spring83Server {
+func newSpring83Server(db *sql.DB, federates []string, fqdn string) *Spring83Server {
 	return &Spring83Server{
 		db:                 db,
 		homeTemplate:       mustTemplate(),
 		federates:          federates,
 		propagationTracker: newPropagationTracker(),
+		fqdn:               fqdn,
 	}
 }
 

@@ -102,12 +102,14 @@ type propagationTracker struct {
 	queue           *relayQueue
 	mutex           *sync.Mutex
 	bgThreadRunning bool
+	fqdn            string
 }
 
-func newPropagationTracker() *propagationTracker {
+func newPropagationTracker(fqdn string) *propagationTracker {
 	return &propagationTracker{
 		queue: newRelayQueue(),
 		mutex: &sync.Mutex{},
+		fqdn:  fqdn,
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 type configYaml struct {
 	Federates []string
 	Port      uint
+	FQDN      string
 }
 
 type Config struct {
@@ -45,5 +46,17 @@ func (config Config) Port() uint {
 		return config.yaml.Port
 	} else {
 		return 8000
+	}
+}
+
+func (config Config) FQDN() string {
+	if config.yaml.FQDN != "" {
+		return config.yaml.FQDN
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		return hostname
+	} else {
+		return "localhost"
 	}
 }
