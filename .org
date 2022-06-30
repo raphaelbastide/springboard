@@ -27,7 +27,8 @@ and that they countersigned boards that they were propagating. Otherwise Alice's
 server doesn't really know where propagated boards are coming from.)
 
 ** DONE Refactor into springboard package
-** TODO background worker/go routine to federate
+** DONE background worker/go routine to federate
+CLOSED: [2022-06-27 Mon 15:38]
     :LOGBOOK:
     CLOCK: [2022-06-25 Sat 10:33]--[2022-06-25 Sat 10:58] =>  0:25
     CLOCK: [2022-06-24 Fri 16:10]--[2022-06-24 Fri 18:30] =>  2:20
@@ -84,3 +85,13 @@ CLOCK: [2022-06-23 Thu 16:24]--[2022-06-23 Thu 16:49] =>  0:25
       - ...
 
 ** definition of federation
+** TODO Via header
+:LOGBOOK:
+CLOCK: [2022-06-27 Mon 15:41]--[2022-06-27 Mon 16:06] =>  0:25
+:END:
+[[https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Via][MDN Documentation]]
+- [ ] config file fqdn
+- [ ] propagation manager
+
+
+** TODO TTL

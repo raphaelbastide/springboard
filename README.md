@@ -41,17 +41,14 @@ The key format changed between draft versions. You may need to upgrade your clie
 
 ### run the server
 
-Run `PORT=8000 go run cmd/s83server/main.go`.  `PORT` is optional and defaults to 8000.
+Run `PORT=8000 go run cmd/springboard serve`.  `PORT` is optional and defaults to 8000.
 
 ### run the client
 
-On first run, the client will generate a keypair for you according to the spring83 spec, and store it in `~/.config/spring83/key.pub` and `~/.config/spring83/key.priv`.
-
-This key has to meet a certain specification, so it may take some time to generate on the first run.
-
-`echo "<em>very</em> <pre>cool</pre>" | go run cmd/s83client/main.go http://localhost:8000`
-
-Run `go run cmd/s83client/main.go --help` for all options.
+```bash
+go run ./cmd/springboard generate-keys # will take a while, only need to run once
+echo "<p>Hello, world!</p>" | go run ./cmd/springboard post https://localhost:8000
+```
 
 ### view the content
 
