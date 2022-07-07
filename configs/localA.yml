@@ -1,3 +1,6 @@
 port: 8000
 federates:
 - http://localhost:8001
+- http://localhost:8002
+fqdn: localhost:8000
+propagate_wait: 10s

@@ -24,9 +24,9 @@ import (
 
 const max_sig = (1 << 256) - 1
 
-func RunServer(port uint, federates []string, fqdn string) (err error) {
+func RunServer(port uint, federates []string, fqdn string, propagateWait time.Duration) (err error) {
 	db := initDB()
-	server := newSpring83Server(db, federates)
+	server := newSpring83Server(db, federates, fqdn, propagateWait)
 
 	http.HandleFunc("/", server.RootHandler)
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -86,15 +86,17 @@ type Spring83Server struct {
 	federates          []string
 	propagationTracker *propagationTracker
 	fqdn               string
+	propagateWait time.Duration
 }
 
-func newSpring83Server(db *sql.DB, federates []string, fqdn string) *Spring83Server {
+func newSpring83Server(db *sql.DB, federates []string, fqdn string, propagateWait time.Duration) *Spring83Server {
 	return &Spring83Server{
 		db:                 db,
 		homeTemplate:       mustTemplate(),
 		federates:          federates,
-		propagationTracker: newPropagationTracker(),
+		propagationTracker: newPropagationTracker(fqdn, propagateWait),
 		fqdn:               fqdn,
+		propagateWait: propagateWait,
 	}
 }
 

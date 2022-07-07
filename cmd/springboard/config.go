@@ -4,15 +4,17 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
 )
 
 type configYaml struct {
-	Federates []string
-	Port      uint
-	FQDN      string
+	Federates     []string
+	Port          uint
+	FQDN          string
+	PropagateWait time.Duration `yaml:"propagate_wait"`
 }
 
 type Config struct {
@@ -58,5 +60,13 @@ func (config Config) FQDN() string {
 		return hostname
 	} else {
 		return "localhost"
+	}
+}
+
+func (config Config) PropagateWait() time.Duration {
+	if config.yaml.PropagateWait == 0 {
+		return time.Duration(5 * time.Minute)
+	} else {
+		return config.yaml.PropagateWait
 	}
 }
