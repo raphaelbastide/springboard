@@ -86,7 +86,7 @@ type Spring83Server struct {
 	federates          []string
 	propagationTracker *propagationTracker
 	fqdn               string
-	propagateWait time.Duration
+	propagateWait      time.Duration
 }
 
 func newSpring83Server(db *sql.DB, federates []string, fqdn string, propagateWait time.Duration) *Spring83Server {
@@ -96,7 +96,7 @@ func newSpring83Server(db *sql.DB, federates []string, fqdn string, propagateWai
 		federates:          federates,
 		propagationTracker: newPropagationTracker(fqdn, propagateWait),
 		fqdn:               fqdn,
-		propagateWait: propagateWait,
+		propagateWait:      propagateWait,
 	}
 }
 
@@ -173,12 +173,9 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Receiving board for %s", keyStr)
 	log.Printf("%+v", r.Header)
 
-	//do all checks we can do with the header first
-
 	var ifUnmodifiedSince time.Time
 	ifUnmodifiedSinceHeader := r.Header["If-Unmodified-Since"]
 	if ifUnmodifiedSinceHeader != nil {
-		// spec says "in HTTP format", but it's not entirely clear if this matches?
 		if ifUnmodifiedSince, err = time.Parse(time.RFC1123, ifUnmodifiedSinceHeader[0]); err != nil {
 			http.Error(w, "Invalid format for If-Unmodified-Since header", http.StatusBadRequest)
 			return
@@ -338,12 +335,30 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Server error", http.StatusInternalServerError)
 	}
 
-	s.propagateBoard(newBoard)
+	// Via headers are in the form "Via: Spring/83 servername.tld"
+	var viaDomain string
+	viaHeader := r.Header["Via"]
+	if len(viaHeader) > 0 {
+		tokens := strings.Split(viaHeader[0], " ")
+		if len(tokens) == 2 {
+			viaDomain = tokens[1]
+		} else {
+			log.Printf("Malformed Via header: %s", viaHeader)
+		}
+	}
+
+	s.propagateBoard(newBoard, viaDomain)
 }
 
-func (server *Spring83Server) propagateBoard(board Board) {
+func (server *Spring83Server) propagateBoard(board Board, viaDomain string) {
 	rand.Seed(time.Now().UnixNano())
 	for _, federate := range server.federates {
+		normalizedFederate := strings.TrimPrefix(federate, "https://")
+		normalizedFederate = strings.TrimPrefix(normalizedFederate, "http://")
+		fmt.Println(normalizedFederate, viaDomain)
+		if normalizedFederate == viaDomain {
+			continue
+		}
 		server.propagationTracker.Schedule(board, federate)
 	}
 }
