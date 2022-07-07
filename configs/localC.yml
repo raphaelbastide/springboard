@@ -1,0 +1,6 @@
+port: 8002
+federates:
+- http://localhost:8000
+- http://localhost:8001
+fqdn: localhost:8002
+propagate_wait: 10s

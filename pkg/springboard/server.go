@@ -24,9 +24,9 @@ import (
 
 const max_sig = (1 << 256) - 1
 
-func RunServer(port uint, federates []string) (err error) {
+func RunServer(port uint, federates []string, fqdn string, propagateWait time.Duration) (err error) {
 	db := initDB()
-	server := newSpring83Server(db, federates)
+	server := newSpring83Server(db, federates, fqdn, propagateWait)
 	go server.periodicallyPurgeOldBoards()
 	http.HandleFunc("/", server.RootHandler)
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -116,14 +116,18 @@ type Spring83Server struct {
 	homeTemplate       *template.Template
 	federates          []string
 	propagationTracker *propagationTracker
+	fqdn               string
+	propagateWait      time.Duration
 }
 
-func newSpring83Server(db *sql.DB, federates []string) *Spring83Server {
+func newSpring83Server(db *sql.DB, federates []string, fqdn string, propagateWait time.Duration) *Spring83Server {
 	return &Spring83Server{
 		db:                 db,
 		homeTemplate:       mustTemplate(),
 		federates:          federates,
-		propagationTracker: newPropagationTracker(),
+		propagationTracker: newPropagationTracker(fqdn, propagateWait),
+		fqdn:               fqdn,
+		propagateWait:      propagateWait,
 	}
 }
 
@@ -200,12 +204,9 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Receiving board for %s", keyStr)
 	log.Printf("%+v", r.Header)
 
-	//do all checks we can do with the header first
-
 	var ifUnmodifiedSince time.Time
 	ifUnmodifiedSinceHeader := r.Header["If-Unmodified-Since"]
 	if ifUnmodifiedSinceHeader != nil {
-		// spec says "in HTTP format", but it's not entirely clear if this matches?
 		if ifUnmodifiedSince, err = time.Parse(time.RFC1123, ifUnmodifiedSinceHeader[0]); err != nil {
 			http.Error(w, "Invalid format for If-Unmodified-Since header", http.StatusBadRequest)
 			return
@@ -365,12 +366,30 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Server error", http.StatusInternalServerError)
 	}
 
-	s.propagateBoard(newBoard)
+	// Via headers are in the form "Via: Spring/83 servername.tld"
+	var viaDomain string
+	viaHeader := r.Header["Via"]
+	if len(viaHeader) > 0 {
+		tokens := strings.Split(viaHeader[0], " ")
+		if len(tokens) == 2 {
+			viaDomain = tokens[1]
+		} else {
+			log.Printf("Malformed Via header: %s", viaHeader)
+		}
+	}
+
+	s.propagateBoard(newBoard, viaDomain)
 }
 
-func (server *Spring83Server) propagateBoard(board Board) {
+func (server *Spring83Server) propagateBoard(board Board, viaDomain string) {
 	rand.Seed(time.Now().UnixNano())
 	for _, federate := range server.federates {
+		normalizedFederate := strings.TrimPrefix(federate, "https://")
+		normalizedFederate = strings.TrimPrefix(normalizedFederate, "http://")
+		fmt.Println(normalizedFederate, viaDomain)
+		if normalizedFederate == viaDomain {
+			continue
+		}
 		server.propagationTracker.Schedule(board, federate)
 	}
 }

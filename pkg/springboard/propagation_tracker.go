@@ -102,12 +102,16 @@ type propagationTracker struct {
 	queue           *relayQueue
 	mutex           *sync.Mutex
 	bgThreadRunning bool
+	fqdn            string
+	propagateWait time.Duration
 }
 
-func newPropagationTracker() *propagationTracker {
+func newPropagationTracker(fqdn string, propagateWait time.Duration) *propagationTracker {
 	return &propagationTracker{
 		queue: newRelayQueue(),
 		mutex: &sync.Mutex{},
+		fqdn:  fqdn,
+		propagateWait: propagateWait,
 	}
 }
 
@@ -119,7 +123,7 @@ func (tracker *propagationTracker) Schedule(board Board, server string) {
 			queuedItem.attempts = 0
 			queuedItem.board = board
 			queuedItem.queuedAt = time.Now()
-			queuedItem.nextAttempt = time.Now().Add(5 * time.Minute)
+			queuedItem.nextAttempt = time.Now().Add(tracker.propagateWait)
 			heap.Fix(tracker.queue, queuedItem.index)
 			log.Printf("%s already queued, resetting the time to %s", queuedItem.lookupKey().Shorthand(), queuedItem.nextAttempt.Format(time.RFC3339))
 		} else {
@@ -127,10 +131,10 @@ func (tracker *propagationTracker) Schedule(board Board, server string) {
 				board:       board,
 				destination: server,
 				queuedAt:    time.Now(),
-				nextAttempt: time.Now().Add(5 * time.Minute),
+				nextAttempt: time.Now().Add(tracker.propagateWait),
 			}
 			heap.Push(tracker.queue, newItem)
-			log.Printf("%s queuing for propagation in 5 minutes (%s)", newItem.lookupKey().Shorthand(), newItem.nextAttempt.Format(time.RFC3339))
+			log.Printf("%s queuing for propagation in %s (%s)", newItem.lookupKey().Shorthand(), tracker.propagateWait.String(), newItem.nextAttempt.Format(time.RFC3339))
 			if !tracker.bgThreadRunning {
 				go tracker.processQueue()
 			}
@@ -162,7 +166,7 @@ func (tracker *propagationTracker) processQueue() {
 			nextUp := heap.Pop(tracker.queue).(*relayInformation)
 			client := NewClient(nextUp.destination)
 			logTag := nextUp.lookupKey().Shorthand()
-			err := client.PostSignedBoard(nextUp.board)
+			err := client.PostSignedBoard(nextUp.board, tracker.fqdn)
 			if err == nil {
 				log.Printf("%s successfully propagated", logTag)
 			} else {

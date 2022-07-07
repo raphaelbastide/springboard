@@ -30,7 +30,7 @@ func NewClient(apiUrl string) (client Client) {
 	return
 }
 
-func (client Client) PostSignedBoard(board Board) (err error) {
+func (client Client) PostSignedBoard(board Board, viaFQDN string) (err error) {
 	httpClient := &http.Client{}
 	url := fmt.Sprintf("%s/%s", client.apiUrl, board.Key)
 	fmt.Printf("URL: %s\n", url)
@@ -46,6 +46,9 @@ func (client Client) PostSignedBoard(board Board) (err error) {
 	req.Header.Set("If-Unmodified-Since", dtHTTP)
 	req.Header.Set("Spring-Version", "83")
 	req.Header.Set("Content-Type", "text/html;charset=utf-8")
+	if viaFQDN != "" {
+		req.Header.Set("Via", fmt.Sprintf("Spring/83 %s", viaFQDN))
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -92,7 +95,7 @@ func (client Client) SignAndPostBoard(boardText []byte, keyFolder string) (err e
 		Board:     string(boardText[:]),
 		Modified:  dt,
 		Signature: hex.EncodeToString(sig),
-	})
+	}, "")
 	if err != nil {
 		err = errors.Wrap(err, "Could not post board")
 		return
