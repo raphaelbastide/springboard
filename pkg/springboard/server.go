@@ -386,7 +386,6 @@ func (server *Spring83Server) propagateBoard(board Board, viaDomain string) {
 	for _, federate := range server.federates {
 		normalizedFederate := strings.TrimPrefix(federate, "https://")
 		normalizedFederate = strings.TrimPrefix(normalizedFederate, "http://")
-		fmt.Println(normalizedFederate, viaDomain)
 		if normalizedFederate == viaDomain {
 			continue
 		}
