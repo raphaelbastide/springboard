@@ -1,0 +1,4 @@
+port: 8787
+federates: []
+fqdn: localhost:8000
+admin_board: bf71bb0d73bc3b0edfd0bd750f9e191c476773b3660d9ba86d658b49083e0623

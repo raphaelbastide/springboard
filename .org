@@ -1,7 +1,27 @@
 * Resources
   - [[https://github.com/robinsloan/spring-83-spec/blob/main/draft-20220616.md][Spring 83 Spec Draft]]
 
-* TODO Federation
+
+* API
+** TODO configure and "administration" board
+  :LOGBOOK:
+  CLOCK: [2022-07-09 Sat 17:56]--[2022-07-09 Sat 18:21] =>  0:25
+  :END:
+** TODO /index.json
+  Shape:
+  {
+    admin_board: {
+      key: "...",
+      posted: "..."
+    }
+    boards: [
+      {
+        key: "...",
+        posted: "..."
+    ]
+  }
+* DONE Federation
+CLOSED: [2022-07-09 Sat 17:57]
 ** using federation to moderate content
 Mastodon gets some group decentralized moderation benefit by
 1. requiring members to be invited to a Mastodon instance
@@ -85,13 +105,15 @@ CLOCK: [2022-06-23 Thu 16:24]--[2022-06-23 Thu 16:49] =>  0:25
       - ...
 
 ** definition of federation
-** TODO Via header
-:LOGBOOK:
-CLOCK: [2022-06-27 Mon 15:41]--[2022-06-27 Mon 16:06] =>  0:25
-:END:
-[[https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Via][MDN Documentation]]
-- [ ] config file fqdn
-- [ ] propagation manager
+** DONE Via header
+  CLOSED: [2022-07-09 Sat 17:57]
+  :LOGBOOK:
+  CLOCK: [2022-06-27 Mon 15:41]--[2022-06-27 Mon 16:06] =>  0:25
+  :END:
+  [[https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Via][MDN Documentation]]
+  - [ ] config file fqdn
+  - [ ] propagation manager
 
 
-** TODO TTL
+** DONE TTL
+  CLOSED: [2022-07-09 Sat 17:57]

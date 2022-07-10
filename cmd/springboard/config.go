@@ -15,6 +15,7 @@ type configYaml struct {
 	Port          uint
 	FQDN          string
 	PropagateWait time.Duration `yaml:"propagate_wait"`
+	AdminBoard    string        `yaml:"admin_board"`
 }
 
 type Config struct {
@@ -69,4 +70,8 @@ func (config Config) PropagateWait() time.Duration {
 	} else {
 		return config.yaml.PropagateWait
 	}
+}
+
+func (config Config) AdminBoard() string {
+	return config.yaml.AdminBoard
 }

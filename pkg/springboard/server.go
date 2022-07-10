@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"database/sql"
+	_ "embed"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -24,9 +26,9 @@ import (
 
 const max_sig = (1 << 256) - 1
 
-func RunServer(port uint, federates []string, fqdn string, propagateWait time.Duration) (err error) {
+func RunServer(port uint, federates []string, adminBoard string, fqdn string, propagateWait time.Duration) (err error) {
 	db := initDB()
-	server := newSpring83Server(db, federates, fqdn, propagateWait)
+	server := newSpring83Server(db, federates, adminBoard, fqdn, propagateWait)
 	go server.periodicallyPurgeOldBoards()
 	http.HandleFunc("/", server.RootHandler)
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -56,6 +58,7 @@ func initDB() *sql.DB {
 			modified text,
 			signature test
 		);
+		CREATE INDEX boards_modified ON boards(modified);
 		`
 
 		_, err = db.Exec(initSQL)
@@ -100,10 +103,12 @@ func (s *Spring83Server) periodicallyPurgeOldBoards() {
 	}
 }
 
-func mustTemplate() *template.Template {
-	f := page_template
+//go:embed assets/index.html
+var indexTemplate string
 
-	t, err := template.New("index").Parse(f)
+func mustTemplate() *template.Template {
+
+	t, err := template.New("index").Parse(indexTemplate)
 	if err != nil {
 		panic(err)
 	}
@@ -115,16 +120,18 @@ type Spring83Server struct {
 	db                 *sql.DB
 	homeTemplate       *template.Template
 	federates          []string
+	adminBoard         string
 	propagationTracker *propagationTracker
 	fqdn               string
 	propagateWait      time.Duration
 }
 
-func newSpring83Server(db *sql.DB, federates []string, fqdn string, propagateWait time.Duration) *Spring83Server {
+func newSpring83Server(db *sql.DB, federates []string, adminBoard string, fqdn string, propagateWait time.Duration) *Spring83Server {
 	return &Spring83Server{
 		db:                 db,
 		homeTemplate:       mustTemplate(),
 		federates:          federates,
+		adminBoard:         adminBoard,
 		propagationTracker: newPropagationTracker(fqdn, propagateWait),
 		fqdn:               fqdn,
 		propagateWait:      propagateWait,
@@ -395,8 +402,9 @@ func (server *Spring83Server) propagateBoard(board Board, viaDomain string) {
 
 func (s *Spring83Server) loadBoards() ([]Board, error) {
 	query := `
-		SELECT key, board, modified
-		FROM boards
+	  SELECT key, board, modified
+	  FROM boards
+	  ORDER BY modified DESC
 	`
 	rows, err := s.db.Query(query)
 	if err != nil {
@@ -427,7 +435,6 @@ func (s *Spring83Server) loadBoards() ([]Board, error) {
 	return boards, nil
 }
 
-// for now, on loads to /, I'm just going to show all boards no matter what
 func (s *Spring83Server) showAllBoards(w http.ResponseWriter, r *http.Request) {
 	boards, err := s.loadBoards()
 	if err != nil {
@@ -485,6 +492,49 @@ func (s *Spring83Server) showBoard(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(board.Board))
 }
 
+func (s *Spring83Server) showIndexJson(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "application/json")
+	type boardJson struct {
+		Key    string    `json:"key"`
+		Posted time.Time `json:"posted"`
+	}
+	type responseJson struct {
+		AdminBoard boardJson   `json:"adminBoard"`
+		Boards     []boardJson `json:"boards"`
+	}
+
+	var response responseJson
+
+	boards, err := s.loadBoards()
+	if err != nil {
+		log.Printf("Error in showIndexJson: %s", err.Error())
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error": "unexpected server error"}`))
+		return
+	}
+
+	for _, board := range boards {
+		jsonifiedBoard := boardJson{
+			Key:    board.Key,
+			Posted: board.Modified,
+		}
+		if board.Key == s.adminBoard {
+			response.AdminBoard = jsonifiedBoard
+		} else {
+			response.Boards = append(response.Boards, jsonifiedBoard)
+		}
+	}
+
+	encodedResponse, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("Error in showIndexJson: %s", err.Error())
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error": "unexpected server error"}`))
+		return
+	}
+	w.Write(encodedResponse)
+}
+
 func (s *Spring83Server) showOptions(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -511,6 +561,8 @@ func (s *Spring83Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			if r.URL.Path[1:] == "federation.txt" {
 				s.showFederation(w, r)
+			} else if r.URL.Path[1:] == "index.json" {
+				s.showIndexJson(w, r)
 			} else {
 				s.showBoard(w, r)
 			}
@@ -521,63 +573,3 @@ func (s *Spring83Server) RootHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid method", http.StatusBadRequest)
 	}
 }
-
-const page_template = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Spring83</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌅</text></svg>">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-	body {
-		background-color: lightyellow;
-	}
-	#containers {
-		display: flex;
-		flex-wrap: wrap;
-	}
-	.board {
-		background-color: lightcyan;
-		border: 1px dotted black;
-		margin: 5px;
-		padding: 10px;
-		width: min-content;
-		cursor: pointer;
-	}
-	.description {
-		font-family: monospace;
-		font-size: xx-small;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-	}
-	.description {
-		color: darkgray;
-	}
-	iframe {
-		border: 0;
-		height: 320px;
-		width: 100% ;
-		overflow: hidden;
-		pointer-events: none;
-	}
-</style>
-</head>
-<body>
-<div id="containers">
-	{{ range .Boards }}
-		<div id="b{{ .Key }}" class="board" onclick="window.open('/{{.Key}}', '_blank', 'height=800,width=564');">
-			<iframe sandbox="allow-popups" src="/{{.Key}}"></iframe>
-			<div class="description">
-				<span class="modified">{{.Modified}}</span>
-				<span class="full-page-link">Full Page</span>
-				<span class="key">{{.Key}}</span>
-			</div>
-		</div>
-	{{ end }}
-</div>
-</body>
-</html>
-`
