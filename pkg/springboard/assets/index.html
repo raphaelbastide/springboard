@@ -42,6 +42,14 @@
 </head>
 <body>
 <div id="containers">
+  <div id="b{{ .AdminBoard.Key }}" class="board" onclick="window.open('/{{.AdminBoard.Key}}', '_blank', 'height=800,width=564');">
+    <iframe sandbox="allow-popups" src="/{{.AdminBoard.Key}}"></iframe>
+    <div class="description">
+      <span class="modified">{{.AdminBoard.Modified}}</span>
+      <span class="full-page-link">Full Page</span>
+      <span class="key">{{.AdminBoard.Key}}</span>
+    </div>
+  </div>
 	{{ range .Boards }}
 		<div id="b{{ .Key }}" class="board" onclick="window.open('/{{.Key}}', '_blank', 'height=800,width=564');">
 			<iframe sandbox="allow-popups" src="/{{.Key}}"></iframe>

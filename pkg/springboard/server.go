@@ -453,9 +453,16 @@ func (s *Spring83Server) showAllBoards(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Spring-Difficulty", fmt.Sprintf("%f", difficultyFactor))
 
 	data := struct {
-		Boards []Board
-	}{
-		Boards: boards,
+		AdminBoard Board
+		Boards     []Board
+	}{}
+
+	for _, board := range boards {
+		if board.Key == s.adminBoard {
+			data.AdminBoard = board
+		} else {
+			data.Boards = append(data.Boards, board)
+		}
 	}
 
 	s.homeTemplate.Execute(w, data)
