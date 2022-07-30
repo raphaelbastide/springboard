@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -38,6 +39,10 @@ func ConfigFromFile(path string) (config Config, err error) {
 }
 
 func (config Config) Federates() []string {
+	fromEnv, inEnv := os.LookupEnv("SB_FEDERATES")
+	if inEnv {
+		return strings.Split(fromEnv, ",")
+	}
 	return config.yaml.Federates
 }
 
@@ -53,6 +58,10 @@ func (config Config) Port() uint {
 }
 
 func (config Config) FQDN() string {
+	fromEnv, inEnv := os.LookupEnv("SB_FQDN")
+	if inEnv {
+		return fromEnv
+	}
 	if config.yaml.FQDN != "" {
 		return config.yaml.FQDN
 	}
@@ -65,6 +74,14 @@ func (config Config) FQDN() string {
 }
 
 func (config Config) PropagateWait() time.Duration {
+	fromEnv, inEnv := os.LookupEnv("SB_PROPAGATE_WAIT")
+	if inEnv {
+		duration, err := time.ParseDuration(fromEnv)
+		if err != nil {
+			panic(err)
+		}
+		return duration
+	}
 	if config.yaml.PropagateWait == 0 {
 		return time.Duration(5 * time.Minute)
 	} else {
@@ -73,5 +90,9 @@ func (config Config) PropagateWait() time.Duration {
 }
 
 func (config Config) AdminBoard() string {
+	fromEnv, inEnv := os.LookupEnv("SB_ADMIN_BOARD")
+	if inEnv {
+		return fromEnv
+	}
 	return config.yaml.AdminBoard
 }

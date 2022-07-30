@@ -37,6 +37,42 @@ in `board.html`, springboard will do this for you.
 
 The key format changed between draft versions. You may need to upgrade your client to v1 or greater, delete the contents of `~/.config/spring83`, and try again.
 
+## Run a server
+
+You can run a server with:
+
+```bash
+springboard serve PATH_TO_CONFIG_YAML
+```
+
+Where a the schema of the file at `PATH_TO_CONFIG_YAML` is:
+
+```yaml
+---
+# port on which to serve this server
+port: 8000
+# boards to which to propagate new boards
+federates:
+  - https://spring83.kindrobot.ca
+  - https://0l0.lol
+  - https://bogbody.biz
+  - https://spring83.mozz.us/
+# who the server will say it is during propagation
+fqdn: localhost:8000
+# how long to wait until propagating a new board
+propagate_wait: 5m
+# the board to "pin" at the top
+admin_board: bf71bb0d73bc3b0edfd0bd750f9e191c476773b3660d9ba86d658b49083e0623
+```
+
+Alternatively you can specify the following environment variables respectively:
+
+* `PORT`
+* `SB_FEDERATES`
+* `SB_FQDN`
+* `SB_PROPAGATE_WAIT`
+* `SB_ADMIN_BOARD`
+
 ## Hacking
 
 ### run the server
