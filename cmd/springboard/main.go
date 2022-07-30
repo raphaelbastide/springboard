@@ -82,7 +82,7 @@ func serve() (err error) {
 		}
 	}
 
-	springboard.RunServer(config.Port(), config.Federates(), config.AdminBoard(), config.FQDN(), config.PropagateWait())
+	springboard.RunServer(config.Port(), config.Federates(), config.AdminBoard(), config.FQDN(), config.PropagateWait(), config.SQLDriver(), config.SQLConnectionString())
 	return
 }
 

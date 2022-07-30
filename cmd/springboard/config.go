@@ -12,11 +12,13 @@ import (
 )
 
 type configYaml struct {
-	Federates     []string
-	Port          uint
-	FQDN          string
-	PropagateWait time.Duration `yaml:"propagate_wait"`
-	AdminBoard    string        `yaml:"admin_board"`
+	Federates           []string
+	Port                uint
+	FQDN                string
+	PropagateWait       time.Duration `yaml:"propagate_wait"`
+	AdminBoard          string        `yaml:"admin_board"`
+	SQLDriver           string        `yaml:"sql_driver"`
+	SQLConnectionString string        `yaml:"sql_connection_string"`
 }
 
 type Config struct {
@@ -95,4 +97,27 @@ func (config Config) AdminBoard() string {
 		return fromEnv
 	}
 	return config.yaml.AdminBoard
+}
+
+func (config Config) SQLDriver() string {
+	fromEnv, inEnv := os.LookupEnv("SB_SQL_DRIVER")
+	if inEnv {
+		return fromEnv
+	} else if config.yaml.SQLDriver != "" {
+		return config.yaml.SQLDriver
+	} else {
+		return "sqlite"
+	}
+
+}
+
+func (config Config) SQLConnectionString() string {
+	fromEnv, inEnv := os.LookupEnv("SB_SQL_CONNECTION_STRING")
+	if inEnv {
+		return fromEnv
+	} else if config.yaml.SQLConnectionString != "" {
+		return config.yaml.SQLConnectionString
+	} else {
+		return "./spring83.db"
+	}
 }

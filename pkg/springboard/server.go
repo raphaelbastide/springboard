@@ -3,32 +3,30 @@ package springboard
 import (
 	"bytes"
 	"crypto/ed25519"
-	"database/sql"
 	_ "embed"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math"
 	"math/rand"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"text/template"
 	"time"
 
 	_ "github.com/glebarez/go-sqlite"
+	_ "github.com/lib/pq"
 )
 
 const max_sig = (1 << 256) - 1
 
-func RunServer(port uint, federates []string, adminBoard string, fqdn string, propagateWait time.Duration) (err error) {
-	db := initDB()
-	server := newSpring83Server(db, federates, adminBoard, fqdn, propagateWait)
+func RunServer(port uint, federates []string, adminBoard string, fqdn string, propagateWait time.Duration, driver string, connectionString string) (err error) {
+	repo := initDB(driver, connectionString)
+	server := newSpring83Server(repo, federates, adminBoard, fqdn, propagateWait)
 	go server.periodicallyPurgeOldBoards()
 	http.HandleFunc("/", server.RootHandler)
 	listenAddress := fmt.Sprintf(":%d", port)
@@ -40,64 +38,29 @@ func RunServer(port uint, federates []string, adminBoard string, fqdn string, pr
 	return
 }
 
-func initDB() *sql.DB {
-	dbName := "./spring83.db"
+type BoardRepo interface {
+	GetAllBoards() ([]Board, error)
+	GetBoard(key string) (board *Board, err error)
+	PublishBoard(Board) error
+	DeleteBoardsBefore(string) error
+	BoardCount() (int, error)
+}
 
-	// if the db doesn't exist, create it
-	if _, err := os.Stat(dbName); errors.Is(err, os.ErrNotExist) {
-		log.Printf("initializing new database")
-		db, err := sql.Open("sqlite", dbName)
-		if err != nil {
-			panic(err)
-		}
-
-		initSQL := `
-		CREATE TABLE boards (
-			key text NOT NULL PRIMARY KEY,
-			board text,
-			modified text,
-			signature test
-		);
-		CREATE INDEX boards_modified ON boards(modified);
-		`
-
-		_, err = db.Exec(initSQL)
-		if err != nil {
-			log.Fatalf("%q: %s\n", err, initSQL)
-		}
-		return db
+func initDB(driver, connectionString string) BoardRepo {
+	if driver == "sqlite" {
+		return newSqliteRepo(connectionString)
+	} else {
+		panic("Unsupported driver " + driver)
 	}
-
-	db, err := sql.Open("sqlite", dbName)
-	if err != nil {
-		panic(err)
-	}
-	return db
 }
 
 func (s *Spring83Server) periodicallyPurgeOldBoards() {
 	for true {
 		expiry := time.Now().Add(-22 * 24 * time.Hour).Format(time.RFC3339)
 		log.Printf("Deleting boards past their TTL (published before %s)", expiry)
-		query := `
-		  SELECT COUNT(*)
-		  FROM boards
-		  WHERE DATETIME(modified) < DATETIME(?)
-		`
-		row := s.db.QueryRow(query, expiry)
-		var count string
-		err := row.Scan(&count)
+		err := s.repo.DeleteBoardsBefore(expiry)
 		if err != nil {
-			log.Println("  Error determining how many boards to delete", err)
-		}
-		log.Printf("  %s boards to delete", count)
-		query = `
-		  DELETE FROM boards
-		  WHERE DATETIME(modified) < DATETIME(?)
-		`
-		_, err = s.db.Exec(query, expiry)
-		if err != nil {
-			log.Println("  Error running deletion query", err)
+			log.Print(err)
 		}
 		time.Sleep(time.Minute)
 	}
@@ -117,7 +80,7 @@ func mustTemplate() *template.Template {
 }
 
 type Spring83Server struct {
-	db                 *sql.DB
+	repo               BoardRepo
 	homeTemplate       *template.Template
 	federates          []string
 	adminBoard         string
@@ -126,9 +89,9 @@ type Spring83Server struct {
 	propagateWait      time.Duration
 }
 
-func newSpring83Server(db *sql.DB, federates []string, adminBoard string, fqdn string, propagateWait time.Duration) *Spring83Server {
+func newSpring83Server(repo BoardRepo, federates []string, adminBoard string, fqdn string, propagateWait time.Duration) *Spring83Server {
 	return &Spring83Server{
-		db:                 db,
+		repo:               repo,
 		homeTemplate:       mustTemplate(),
 		federates:          federates,
 		adminBoard:         adminBoard,
@@ -139,52 +102,11 @@ func newSpring83Server(db *sql.DB, federates []string, adminBoard string, fqdn s
 }
 
 func (s *Spring83Server) getBoard(key string) (*Board, error) {
-	query := `
-		SELECT key, board, modified, signature
-		FROM boards
-		WHERE key=?
-	`
-	row := s.db.QueryRow(query, key)
-
-	var dbkey, board, modified, signature string
-	err := row.Scan(&dbkey, &board, &modified, &signature)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return nil, err
-		}
-		return nil, nil
-	}
-
-	modifiedTime, err := time.Parse(time.RFC3339, modified)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Board{
-		Key:       key,
-		Board:     board,
-		Modified:  modifiedTime,
-		Signature: signature,
-	}, nil
+	return s.repo.GetBoard(key)
 }
 
 func (s *Spring83Server) boardCount() (int, error) {
-	query := `
-		SELECT count(*)
-		FROM boards
-	`
-	row := s.db.QueryRow(query)
-
-	var count int
-	err := row.Scan(&count)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return 0, err
-		}
-		panic(err)
-	}
-
-	return count, nil
+	return s.repo.BoardCount()
 }
 
 func (s *Spring83Server) getDifficulty() (float64, uint64, error) {
@@ -358,16 +280,7 @@ func (s *Spring83Server) publishBoard(w http.ResponseWriter, r *http.Request) {
 		Modified:  modifiedTime,
 		Signature: strSignature,
 	}
-	_, err = s.db.Exec(`
-		INSERT INTO boards (key, board, modified, signature)
-		            values(?, ?, ?, ?)
-		ON CONFLICT(key) DO UPDATE SET
-			    board=?,
-			    modified=?,
-			    signature=?
-		`, newBoard.Key, newBoard.Board, newBoard.ModifiedAtDBFormat(), newBoard.Signature,
-		newBoard.Board, newBoard.ModifiedAtDBFormat(), newBoard.Signature)
-
+	err = s.repo.PublishBoard(newBoard)
 	if err != nil {
 		log.Printf("%s", err)
 		http.Error(w, "Server error", http.StatusInternalServerError)
@@ -401,38 +314,7 @@ func (server *Spring83Server) propagateBoard(board Board, viaDomain string) {
 }
 
 func (s *Spring83Server) loadBoards() ([]Board, error) {
-	query := `
-	  SELECT key, board, modified
-	  FROM boards
-	  ORDER BY modified DESC
-	`
-	rows, err := s.db.Query(query)
-	if err != nil {
-		return nil, err
-	}
-
-	boards := []Board{}
-	for rows.Next() {
-		var key, board, modified string
-
-		err = rows.Scan(&key, &board, &modified)
-		if err != nil {
-			return nil, err
-		}
-
-		modifiedTime, err := time.Parse(time.RFC3339, modified)
-		if err != nil {
-			return nil, err
-		}
-
-		boards = append(boards, Board{
-			Key:      key,
-			Board:    board,
-			Modified: modifiedTime,
-		})
-	}
-
-	return boards, nil
+	return s.repo.GetAllBoards()
 }
 
 func (s *Spring83Server) showAllBoards(w http.ResponseWriter, r *http.Request) {
