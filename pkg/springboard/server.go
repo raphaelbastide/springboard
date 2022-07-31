@@ -18,8 +18,6 @@ import (
 	"text/template"
 	"time"
 
-	_ "github.com/glebarez/go-sqlite"
-	_ "github.com/lib/pq"
 )
 
 const max_sig = (1 << 256) - 1
@@ -49,6 +47,8 @@ type BoardRepo interface {
 func initDB(driver, connectionString string) BoardRepo {
 	if driver == "sqlite" {
 		return newSqliteRepo(connectionString)
+	} else if driver == "postgres" {
+		return newPostgresRepo(connectionString)
 	} else {
 		panic("Unsupported driver " + driver)
 	}
