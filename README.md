@@ -16,12 +16,12 @@ Run `./springboard help` (or `.\springboard.exe help` on Windows) to get started
 An example:
 
 ```bash
-./springboard generate-keys
+./springboard generate-key
 echo "<p>Hello, world!</p>" > board.html
 ./springboard post https://spring83.kindrobot.ca < board.html
 ```
 
-`./springboard generate-keys` may take several minutes and use a lot of proccessing power.
+`./springboard generate-key` may take several minutes and use a lot of proccessing power.
 By default, it will save the key pair to `$HOME/.config/spring83`. 
 
 `board.html` can be any valid-ish HTML5 document. It may not have scripts or
@@ -32,6 +32,10 @@ load externl resources. You should not put:
 ```
 
 in `board.html`, springboard will do this for you.
+
+### Existing key
+
+If you already have generated a keypair, you should add to `~/.config/spring83` a file named `key.priv` containing the private key (128 characters), and another file `key.pub` containing the public key (64 characters).
 
 ### Help, my key doesn't work
 
